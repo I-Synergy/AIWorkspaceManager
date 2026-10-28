@@ -1,0 +1,175 @@
+{
+  "name": "ai-manager",
+  "displayName": "AI Manager for Visual Studio Code",
+  "description": "Browse, install, update and prune the skills and agents each repository installs \u2014 a full-page front-end for .ai/scripts/catalog.py",
+  "version": "0.10.0",
+  "publisher": "I-Synergy",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#6366f1",
+    "theme": "dark"
+  },
+  "homepage": "https://github.com/I-Synergy/AIManager#readme",
+  "bugs": {
+    "url": "https://github.com/I-Synergy/AIManager/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/I-Synergy/AIManager.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "copilot",
+    "skills",
+    "agents",
+    "template",
+    "catalog",
+    "ai"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:aiManager.launcher",
+    "workspaceContains:.ai/ai.json",
+    "workspaceContains:.ai/scripts/catalog.py",
+    "onWebviewPanel:aiManager.panel"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiManager.open",
+        "title": "AI Manager: Open",
+        "icon": "$(library)"
+      },
+      {
+        "command": "aiManager.setup",
+        "title": "AI Manager: Select Skills and Agents",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "aiManager.updates",
+        "title": "AI Manager: Check for Updates",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "aiManager.sync",
+        "title": "AI Manager: Sync Selection",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "aiManager.openManifest",
+        "title": "AI Manager: Open .ai/ai.json",
+        "icon": "$(json)"
+      },
+      {
+        "command": "aiManager.refresh",
+        "title": "AI Manager: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aiManager.installItem",
+        "title": "AI Manager: Install This Item",
+        "icon": "$(add)"
+      },
+      {
+        "command": "aiManager.removeItem",
+        "title": "AI Manager: Remove This Item",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "aiManager.vendorTooling",
+        "title": "AI Manager: Vendor the Resolver Into This Repo",
+        "icon": "$(cloud-download)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiManager",
+          "title": "AI Manager",
+          "icon": "images/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "aiManager": [
+        {
+          "id": "aiManager.launcher",
+          "name": "AI Manager"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "aiManager.open",
+          "when": "view == aiManager.launcher",
+          "group": "navigation"
+        },
+        {
+          "command": "aiManager.refresh",
+          "when": "view == aiManager.launcher",
+          "group": "navigation"
+        },
+        {
+          "command": "aiManager.sync",
+          "when": "view == aiManager.launcher",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "aiManager.installItem",
+          "when": "view == aiManager.launcher && viewItem == availableItem",
+          "group": "inline"
+        },
+        {
+          "command": "aiManager.removeItem",
+          "when": "view == aiManager.launcher && viewItem == installedItem",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Manager",
+      "properties": {
+        "aiManager.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Interpreter used to run .ai/scripts/catalog.py."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/sync-tooling.mjs && node esbuild.js",
+    "vscode:prepublish": "npm run build",
+    "compile": "tsc -p . --noEmit",
+    "watch": "node esbuild.js --watch",
+    "dev": "node esbuild.js && node tools/dev-server.mjs",
+    "test": "tsc -p tsconfig.test.json && node --test test/logic.test.js",
+    "test:resolver": "python -m pytest test/resolver -q",
+    "package": "npm run build && npx --yes @vscode/vsce package --no-dependencies --out releases/",
+    "release": "node tools/release.mjs",
+    "sync-tooling": "node scripts/sync-tooling.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "lit": "^3.2.1"
+  }
+}

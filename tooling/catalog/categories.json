@@ -1,0 +1,72 @@
+{
+  "categoryVersion": 1,
+  "description": "Controlled vocabulary the catalog groups by. Items in this repository declare `category:` in their own frontmatter and are validated against these ids. A third-party source is not classified item by item: everything it contributes lands in the one bucket named for that source, so the tree stays honest about what is ours and what is imported.",
+  "categories": [
+    {
+      "id": "architecture",
+      "label": "Architecture & design",
+      "description": "System design, discovery, specifications and the story-to-slice chain."
+    },
+    {
+      "id": "backend",
+      "label": "Backend & API",
+      "description": "Server-side .NET, HTTP endpoints, data access and integration."
+    },
+    {
+      "id": "frontend",
+      "label": "Frontend & UI",
+      "description": "Blazor, XAML, theming, components and visual design."
+    },
+    {
+      "id": "mobile",
+      "label": "Mobile & MAUI",
+      "description": "MAUI, Android, iOS, device capabilities and release tooling."
+    },
+    {
+      "id": "testing",
+      "label": "Testing",
+      "description": "Unit, integration, UI and end-to-end testing."
+    },
+    {
+      "id": "security",
+      "label": "Security",
+      "description": "Threat modelling, hardening, auth and secure storage."
+    },
+    {
+      "id": "devops",
+      "label": "DevOps & release",
+      "description": "Pipelines, containers, infrastructure and deployment."
+    },
+    {
+      "id": "review",
+      "label": "Review & quality",
+      "description": "Code review, standards, gap analysis and decision councils."
+    },
+    {
+      "id": "docs",
+      "label": "Docs & writing",
+      "description": "READMEs, ADRs, technical prose and documentation."
+    },
+    {
+      "id": "tooling",
+      "label": "Catalog & tooling",
+      "description": "Skills about skills: creating, updating, verifying and upgrading this template."
+    },
+    {
+      "id": "copilot",
+      "label": "Copilot",
+      "description": "Items imported from the awesome-copilot catalog."
+    },
+    {
+      "id": "uncategorised",
+      "label": "Template",
+      "description": "Items from this template that declare no category."
+    }
+  ],
+  "sources": {
+    "awesome-copilot": {
+      "category": "copilot",
+      "default": "uncategorised"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "command": "update",
+  "applied": false,
+  "dryRun": true,
+  "remote": true,
+  "remoteSelected": true,
+  "ready": [
+    {
+      "id": "template:council",
+      "displayId": "council",
+      "kind": "skill",
+      "status": "upstream-changed",
+      "path": ".ai/skills/council",
+      "source": "template"
+    },
+    {
+      "id": "template:maui-specialist",
+      "displayId": "maui-specialist",
+      "kind": "skill",
+      "status": "upstream-changed",
+      "path": ".ai/skills/maui-specialist",
+      "source": "template"
+    },
+    {
+      "id": "template:dotnet-engineer",
+      "displayId": "dotnet-engineer",
+      "kind": "skill",
+      "status": "not-installed",
+      "path": ".ai/skills/dotnet-engineer",
+      "source": "template"
+    }
+  ],
+  "blocked": [
+    {
+      "id": "template:verify-config",
+      "displayId": "verify-config",
+      "kind": "skill",
+      "status": "both",
+      "path": ".ai/skills/verify-config",
+      "source": "template"
+    }
+  ]
+}

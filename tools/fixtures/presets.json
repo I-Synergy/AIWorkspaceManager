@@ -1,0 +1,97 @@
+{
+  "command": "presets",
+  "current": null,
+  "presets": [
+    {
+      "name": "Architecture",
+      "description": "System design end to end: the architect agent and its design chain, an ADR writer and architecture review from both catalogs.",
+      "skills": 10,
+      "agents": 4,
+      "recommended": false
+    },
+    {
+      "name": "Security",
+      "description": "Threat modelling, secure coding, API hardening, secret scanning and agent supply-chain review from both sources.",
+      "skills": 8,
+      "agents": 4,
+      "recommended": false
+    },
+    {
+      "name": "Design",
+      "description": "Visual and interaction design: theming generators and UI implementation across Blazor, MAUI, WPF and WinUI, plus Copilot design personas.",
+      "skills": 21,
+      "agents": 7,
+      "recommended": false
+    },
+    {
+      "name": "Review",
+      "description": "Code review and quality gates: the reviewer agent, gap review, audit skills and the Copilot quality playbook.",
+      "skills": 9,
+      "agents": 2,
+      "recommended": false
+    },
+    {
+      "name": "Devops",
+      "description": "CI/CD, containers, infrastructure as code and release rollout, with GitHub Actions and Terraform/Bicep agents.",
+      "skills": 7,
+      "agents": 6,
+      "recommended": false
+    },
+    {
+      "name": ".Net Core",
+      "description": ".NET backend work: CQRS, EF Core, APIs, async and documentation conventions, plus the C# test stacks.",
+      "skills": 17,
+      "agents": 7,
+      "recommended": true
+    },
+    {
+      "name": ".Net Maui",
+      "description": "Everything MAUI: app architecture, controls, auth, offline data, notifications, bindings, release and DevFlow debugging.",
+      "skills": 47,
+      "agents": 6,
+      "recommended": false
+    },
+    {
+      "name": ".Net WPF",
+      "description": "WPF desktop work with the shared UI stack, XAML theming and the MVVM Toolkit.",
+      "skills": 16,
+      "agents": 3,
+      "recommended": false
+    },
+    {
+      "name": ".Net WinUI",
+      "description": "WinUI 3 / Windows App SDK work: Fluent shell, UWP migration, MSIX publishing and the MVVM Toolkit.",
+      "skills": 18,
+      "agents": 3,
+      "recommended": false
+    },
+    {
+      "name": "Books, blogs and writing",
+      "description": "Documentation and prose: READMEs, ADRs, blog posts, books-to-skills and Microsoft docs lookup.",
+      "skills": 10,
+      "agents": 4,
+      "recommended": false
+    },
+    {
+      "name": ".Net Web and Blazor",
+      "description": "Backend plus Blazor UI: APIs, security, EF Core, Fluent UI Blazor, E2E tests and the full review chain.",
+      "skills": 25,
+      "agents": 7,
+      "recommended": false
+    },
+    {
+      "name": "Tools",
+      "description": "Meta-tooling: skill and agent creation, catalog maintenance, Copilot CLI, MCP builders and prompt engineering.",
+      "skills": 17,
+      "agents": 4,
+      "recommended": false
+    },
+    {
+      "name": "full",
+      "description": "Everything the catalog offers from both sources. Used by the template repository itself as a regression guard, and by projects that want the whole set.",
+      "skills": 526,
+      "agents": 231,
+      "recommended": false
+    }
+  ]
+}

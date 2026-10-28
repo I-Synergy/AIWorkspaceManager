@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out-test/
+releases/
+*.vsix
+.tooling-staging/
+
+# Test caches
+.pytest_cache/
+**/__pycache__/
+
+# Local editor state
+.vsix-tmp/
+*.log
+
+# Session/agent state
+.reasonix/

@@ -1,0 +1,5 @@
+# The vendored resolver records byte sizes in tooling/tooling.json.
+# Checkouts must be byte-identical on every platform, or `sync-tooling --check`
+# fails on CI (Windows working trees use CRLF by default).
+tooling/** text eol=lf
+scripts/** text eol=lf
