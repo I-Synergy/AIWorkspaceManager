@@ -1,0 +1,30 @@
+src/**
+test/**
+tools/**
+out-test/**
+node_modules/**
+releases/**
+tsconfig.json
+tsconfig.test.json
+esbuild.js
+**/*.map
+
+# Publishing metadata that is not part of the extension
+.github/**
+.vscode/**
+.claude/**
+*.vsix
+.vscodeignore
+package-lock.json
+requirements-dev.txt
+RELEASE_NOTES.md
+images/social-preview.png
+
+# Workspace, test and agent noise that must never ship
+.gitignore
+tmp/**
+.pytest_cache/**
+.reasonix/**
+**/__pycache__/**
+.tooling-staging/**
+scripts/sync-tooling.mjs

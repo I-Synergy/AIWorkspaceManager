@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Manager for Visual Studio Code</title>
+  <style>
+    /* The VS Code palette, so the UI renders exactly as it does inside the editor. */
+    :root {
+      --vscode-foreground: #cccccc;
+      --vscode-descriptionForeground: #9d9d9d;
+      --vscode-errorForeground: #f14c4c;
+      --vscode-icon-foreground: #c5c5c5;
+      --vscode-focusBorder: #007fd4;
+      --vscode-editor-background: #1e1e1e;
+      --vscode-editor-foreground: #d4d4d4;
+      --vscode-editorWidget-background: #252526;
+      --vscode-panel-background: #252526;
+      --vscode-panel-border: #3a3a3a;
+      --vscode-panelTitle-activeBorder: #007acc;
+      --vscode-panelTitle-activeForeground: #e7e7e7;
+      --vscode-progressBar-background: #0e70c0;
+      --vscode-input-background: #3c3c3c;
+      --vscode-input-foreground: #cccccc;
+      --vscode-input-border: #3c3c3c;
+      --vscode-input-placeholderForeground: #a6a6a6;
+      --vscode-button-background: #0e639c;
+      --vscode-button-foreground: #ffffff;
+      --vscode-button-hoverBackground: #1177bb;
+      --vscode-button-secondaryBackground: #3a3d41;
+      --vscode-button-secondaryForeground: #ffffff;
+      --vscode-button-secondaryHoverBackground: #45494e;
+      --vscode-badge-background: #4d4d4d;
+      --vscode-badge-foreground: #cccccc;
+      --vscode-list-activeSelectionBackground: #094771;
+      --vscode-list-activeSelectionForeground: #ffffff;
+      --vscode-list-hoverBackground: #2a2d2e;
+      --vscode-charts-red: #f14c4c;
+      --vscode-charts-orange: #d18616;
+      --vscode-charts-green: #89d185;
+      --vscode-charts-blue: #3794ff;
+      --vscode-textLink-foreground: #3794ff;
+      --vscode-textCodeBlock-background: #2d2d2d;
+      --vscode-scrollbarSlider-background: #79797966;
+      --vscode-scrollbarSlider-hoverBackground: #646464b3;
+      --vscode-notifications-background: #252526;
+      --vscode-notifications-border: #3a3a3a;
+      --vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --vscode-editor-font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+    }
+
+    :root.light {
+      --vscode-foreground: #3b3b3b;
+      --vscode-descriptionForeground: #717171;
+      --vscode-errorForeground: #a1260d;
+      --vscode-icon-foreground: #424242;
+      --vscode-focusBorder: #0090f1;
+      --vscode-editor-background: #ffffff;
+      --vscode-editor-foreground: #3b3b3b;
+      --vscode-editorWidget-background: #f3f3f3;
+      --vscode-panel-background: #f3f3f3;
+      --vscode-panel-border: #d4d4d4;
+      --vscode-panelTitle-activeBorder: #005fb8;
+      --vscode-panelTitle-activeForeground: #3b3b3b;
+      --vscode-progressBar-background: #005fb8;
+      --vscode-input-background: #ffffff;
+      --vscode-input-foreground: #3b3b3b;
+      --vscode-input-border: #cecece;
+      --vscode-input-placeholderForeground: #767676;
+      --vscode-button-background: #005fb8;
+      --vscode-button-foreground: #ffffff;
+      --vscode-button-hoverBackground: #0258a8;
+      --vscode-button-secondaryBackground: #e5e5e5;
+      --vscode-button-secondaryForeground: #3b3b3b;
+      --vscode-button-secondaryHoverBackground: #cccccc;
+      --vscode-badge-background: #cccccc;
+      --vscode-badge-foreground: #3b3b3b;
+      --vscode-list-activeSelectionBackground: #0060c0;
+      --vscode-list-activeSelectionForeground: #ffffff;
+      --vscode-list-hoverBackground: #f2f2f2;
+      --vscode-charts-red: #a1260d;
+      --vscode-charts-orange: #bf8803;
+      --vscode-charts-green: #388a34;
+      --vscode-charts-blue: #005fb8;
+      --vscode-textLink-foreground: #005fb8;
+      --vscode-textCodeBlock-background: #f3f3f3;
+      --vscode-scrollbarSlider-background: #64646466;
+      --vscode-scrollbarSlider-hoverBackground: #646464b3;
+      --vscode-notifications-background: #ffffff;
+      --vscode-notifications-border: #d4d4d4;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--vscode-editor-background);
+      color: var(--vscode-foreground);
+      font-family: var(--vscode-font-family);
+      font-size: 13px;
+    }
+    ai-manager-app {
+      display: block;
+      height: 100vh;
+    }
+
+    /* Shown instead of the app when the page is opened straight off disk. */
+    #file-notice {
+      display: none;
+      max-width: 640px;
+      margin: 12vh auto;
+      padding: 24px 28px;
+      border: 1px solid var(--vscode-panel-border);
+      border-left: 3px solid var(--vscode-charts-blue, #3794ff);
+      border-radius: 4px;
+      line-height: 1.6;
+    }
+    body.from-file #file-notice {
+      display: block;
+    }
+    body.from-file ai-manager-app {
+      display: none;
+    }
+    #file-notice h1 {
+      font-size: 15px;
+      margin: 0 0 10px;
+    }
+    #file-notice p {
+      margin: 0 0 12px;
+      color: var(--vscode-descriptionForeground);
+    }
+    #file-notice code {
+      background: var(--vscode-textCodeBlock-background);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: var(--vscode-editor-font-family);
+    }
+    #file-notice ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--vscode-descriptionForeground);
+    }
+  </style>
+</head>
+<body>
+  <ai-manager-app></ai-manager-app>
+
+  <div id="file-notice">
+    <h1>Use the dev server, not the file</h1>
+    <p>
+      This page is the browser harness for the AI Manager webview. It loads the
+      bundle and its fixtures over HTTP, which a <code>file://</code> page cannot
+      do — so it renders nothing when opened directly from disk.
+    </p>
+    <p>From <code>extensions/ai-manager</code>:</p>
+    <p><code>npm run dev</code> &nbsp;→&nbsp; <code>http://localhost:3731/</code></p>
+    <ul>
+      <li><code>?theme=light</code> — light palette</li>
+      <li><code>?scenario=empty</code> — a brand-new repository with nothing selected</li>
+    </ul>
+  </div>
+
+  <script>
+    // The harness needs a real origin: `fetch()` of the fixtures is refused on
+    // file://, so say that plainly instead of showing an empty page.
+    if (location.protocol === "file:") {
+      document.body.classList.add("from-file");
+    } else {
+      if (new URLSearchParams(location.search).get("theme") === "light") {
+        document.documentElement.classList.add("light");
+      }
+      // Classic script first: the mock host defines acquireVsCodeApi, which the
+      // module bundle calls at import time.
+      const mock = document.createElement("script");
+      mock.src = "/mock-api.js";
+      document.body.appendChild(mock);
+
+      const bundle = document.createElement("script");
+      bundle.type = "module";
+      bundle.src = "/dist/web.js";
+      document.body.appendChild(bundle);
+
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = "/dist/web.css";
+      document.head.appendChild(css);
+    }
+  </script>
+</body>
+</html>

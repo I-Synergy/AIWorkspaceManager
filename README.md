@@ -1,1 +1,231 @@
-# AIManager
+# AI Manager for Visual Studio Code
+
+A full-page manager for the skills and agents each repository installs. It ships
+the per-repository resolver, so a repository installs **only** what it selected,
+and updates are a diff against a pinned revision rather than a re-clone.
+
+## The problems this solves
+
+Copilot, Claude Code and Reasonix/DeepSeek only follow the skills, agents and
+instructions that are present in the repository. Getting that content there by
+hand is where teams lose time:
+
+- **All-or-nothing adoption.** Cloning a template brings every skill and agent,
+  including the ones a project will never use. There is no per-repository
+  selection, and no dependency closure when you do select.
+- **Silent drift.** Installed files get edited in place. A later template update
+  either overwrites that work or is skipped; nobody can tell which files are
+  template-owned, which the project changed, or which are stale.
+- **No provenance.** It is hard to answer where an item came from, which revision
+  it was installed from, its licence, or whether upstream has moved.
+- **Sources do not compose.** The template catalog and `awesome-copilot` overlap;
+  duplicates, name collisions and missing requirements surface only after install.
+- **Setup is manual.** A new repository needs the resolver, vocabulary,
+  `AGENTS.md`, Copilot instructions, Claude settings, project folders and the
+  `.claude` / `.github` / `.reasonix` junctions — often by running several scripts.
+- **Updates are risky.** Without a lock and content hashes, an update is a
+  re-clone that can delete local changes, and removal has no explicit boundary.
+
+AI Manager makes a repository's selection a first-class, reviewable thing: one
+catalog over both sources, a per-repository selection, a lock with content
+hashes, and updates that are a diff against a pinned revision.
+
+| Problem | What the extension does |
+|---|---|
+| Choosing what to install | Browse both sources, filter, bulk-select, and apply presets with dependencies resolved |
+| Keeping it current | Compares the pinned ref with the source's release tags and offers a one-click upgrade to the newest release |
+| Protecting local work | `local-modified` / `upstream-changed` / `conflict` states; nothing is overwritten without an explicit choice |
+| Knowing what is installed | Installed view grouped by health, with provenance, path, licence and install mode |
+| Setting up a repository | First activation writes the resolver, vocabulary, `AGENTS.md`, Copilot/Claude configuration, project folders and platform junctions |
+| Removing safely | Removing edits the selection; files leave disk only through an explicit prune |
+| Working without a manifest | An implicit starter resolves the repository's own tree or the template, so Browse and Installed work immediately |
+
+## What it does
+
+| Surface | What it does |
+|---|---|
+| **Browse** | The whole catalog: search, filter by kind / source / state, detail pane with provenance. Tick rows that are not installed yet (already-installed rows are disabled — manage those in Installed) for a bulk install that works across filters, or install everything the current filter matches |
+| **Installed** | What this repo has, grouped by state — needs attention first. Search and filter by kind / source / health (in sync, needs attention, not materialised), tick rows to remove several at once, plus sync, per-item remove and prune for deselected leftovers |
+| **Updates** | Items whose catalog content moved upstream, with the four states (unchanged / upstream-changed / modified here / conflict) and *update all safe* — plus search and kind / source / ready-vs-conflict filters, and a banner when the pinned ref is older than the source's newest release tag |
+| **Presets** | Named selections with resolved counts and the delta against the current choice: twelve domain presets (Architecture, Security, Design, Review, Devops, .NET Core / MAUI / WPF / WinUI, Web & Blazor, writing, tools) drawing on both sources, with dependencies resolved; `full` is last and labelled with its real size |
+| **Settings** | Interpreter, project name/intention, sources table (repo / ref / release / resolve / licence / hooks), maintenance actions |
+
+Plus a status-bar-style launcher view in the Explorer with a drift badge, and
+command-palette entries: Open, Select Skills and Agents, Check for Updates,
+Sync Selection.
+
+## Install
+
+Search for **AI Manager for Visual Studio Code** in the Extensions view, or:
+
+```bash
+code --install-extension I-Synergy.ai-manager
+```
+
+Open a folder and the extension sets up `.ai/` on first activation — the
+resolver, the vocabulary and the supporting project folders.
+
+## Screenshots
+
+![AI Manager — Browse, Installed, Updates, Presets and Settings](images/screenshots/tabs.gif)
+
+| Browse | Installed |
+|---|---|
+| ![Browse](images/screenshots/browse.png) | ![Installed](images/screenshots/installed.png) |
+| **Updates** | **Presets** |
+| ![Updates](images/screenshots/updates.png) | ![Presets](images/screenshots/presets.png) |
+| **Settings** | |
+| ![Settings](images/screenshots/settings.png) | |
+
+## Design decisions
+
+- **The CLI is the only implementation.** Every list the webview renders comes
+  from one `catalog.py --json` call. The extension holds no resolution logic, so
+  it cannot drift from what CI enforces (`sync --check`, `index --verify`).
+- **Loud about cost.** The resolver exists because 530 installed skills is
+  noise. Presets are recommended, `full` is never the default but never hidden,
+  and the delta on every card says how many items it would add or remove.
+- **Nothing destructive by default.** Removing edits `.ai/ai.json` only; files
+  leave disk only through an explicit Prune, which says so on the button.
+- **The template owns its resolver; the project owns everything else.**
+  Setup writes the whole `.ai/scripts/` set (resolver, mirrors, hygiene,
+  migration, upgrade), the vocabulary under `.ai/catalog/`, and the supporting
+  `.ai/` folders, recording provenance in `.ai/tooling.json`. A file the
+  template no longer ships is filled from the extension's bundled copy.
+  Template files are refreshed only on an explicit update-to-release; a file the
+  project created, or a template file edited after install, is never overwritten
+  by a later update.
+- **Native in every theme.** Styling uses only `--vscode-*` variables, so light,
+  dark and high-contrast all work without a single hard-coded colour.
+
+## Requirements
+
+- Any folder. On first activation AI Manager sets it up from the template:
+  `.ai/ai.json`, the resolver and vocabulary under `.ai/` (`.ai/scripts/`,
+  `.ai/catalog/`), the supporting folders an agent expects — `analysis`,
+  `checklists`, `completed`, `patterns`, `plans`, `progress`, `project`,
+  `reference` and `session-context.md` — and the agent configuration:
+  `AGENTS.md`, `.github/copilot-instructions.md`, `.claude/settings.json` and
+  `.gitattributes`. Nothing project-owned is overwritten; the same setup can be
+  re-run from Settings.
+- Python on `PATH`, or set `aiManager.pythonPath`. The resolver itself ships
+  inside the VSIX.
+
+For updates to be meaningful, the source must resolve remotely:
+
+```jsonc
+"sources": {
+  "template": { "repo": "I-Synergy/AI", "ref": "v1.6.0", "resolve": "remote" }
+}
+```
+
+With `"resolve": "local"` (the default) the source is the project's own tree, so
+there is no upstream to compare — the Updates view explains exactly this instead
+of pretending there is nothing to do.
+
+Release detection is independent of that: `release` asks the source's repository
+for its tags (`git ls-remote`, read-only, no clone) and compares them with the
+pinned `ref` as semantic versions. A branch or SHA pin has nothing to compare,
+so it is reported without a "newer" claim. Bumping the pin stays a manifest edit
+— the banner tells you which one.
+
+## Develop
+
+```bash
+npm install
+npm run compile        # tsc --noEmit, strict
+npm test               # pure-logic unit tests (node --test)
+npm run test:resolver  # resolver tests (pytest, test/resolver)
+npm run build          # esbuild: dist/extension.js, dist/web.js, dist/web.css
+npm run dev            # build, then serve the real webview in a browser
+```
+
+`npm run dev` serves the actual bundle against fixtures from `tools/fixtures/`,
+so the UI can be reviewed and screenshotted without VS Code:
+
+- `http://localhost:3731/` — populated repository, dark theme
+- `?theme=light` — light theme
+- `?scenario=empty` — a brand-new repository, the install-everything starting point
+
+The fixtures are generated from the real resolver
+(`catalog.py browse --json`), so the screenshots show real catalog content.
+
+## Layout
+
+```
+src/common/     types shared by both sides + the typed RPC layer
+src/host/       activation, full-page panel, HostAPI (shells out to catalog.py)
+src/web/        Lit components, store, router, logic.ts (pure, unit-tested)
+tools/          dev harness: index.html, mock-api.js, dev-server.mjs, fixtures
+tooling/        committed resolver snapshot the VSIX runs (see Packaging)
+test/           pure-logic tests (node) + test/resolver/ (pytest)
+scripts/        sync-tooling (snapshot) + install-tooling (vendor into a repo)
+```
+
+`src/web/logic.ts` holds all parsing, filtering, grouping and delta maths and
+imports nothing from `vscode` or `lit`, which is what makes it testable without
+an editor host — the same reason the reference NuGet manager splits `src/web`
+from `src/host`.
+
+## Packaging
+
+```bash
+npm run package   # -> releases/ai-manager-<version>.vsix
+```
+
+`.vscodeignore` keeps the bundle to the compiled output; the CI workflow asserts
+the VSIX stays under 2 MB so a leaked `node_modules` cannot slip through.
+
+## Publishing
+
+The Marketplace release uses the same flow as NuGet Package Manager: a push of a
+new version to the default branch publishes it, tags `v<version>` and creates a
+GitHub Release with the `.vsix`.
+
+1. Add the `VSCE_PAT` repository secret (Marketplace → **Manage** scope for the
+   `I-Synergy` publisher).
+2. Run **Actions → Release → Run workflow** and pick `patch`, `minor` or `major`.
+   `tools/release.mjs` bumps `package.json` and `package-lock.json`, moves the
+   `CHANGELOG.md` entries under Unreleased into the new version, writes
+   `RELEASE_NOTES.md`, then commits and pushes.
+3. CI builds and tests; the publish job publishes `I-Synergy.ai-manager`, tags
+   the commit and attaches `ai-manager.vsix` to the GitHub Release.
+
+Publishing is skipped when the version's `v<version>` tag already exists, so a
+normal push does not republish an already-released version.
+
+## Tooling snapshot
+
+`tooling/` is the resolver the VSIX actually runs (`catalog.py`, its sibling
+scripts, the vocabulary and the schemas). It is committed, so a fresh clone
+builds without a template checkout; `tooling.json` records each file's size.
+
+- `npm run sync-tooling` — refresh it from a template checkout: `AI_TEMPLATE_ROOT`
+  if set, otherwise `../../.ai/scripts/catalog.py` when the extension lives inside
+  the template repository. With neither, the committed snapshot is verified and
+  used.
+- `npm run sync-tooling -- --check` — verify the snapshot without writing (CI).
+- `npm run sync-tooling -- --stamp` — recompute `tooling.json` after editing a
+  file in place, which is how this standalone checkout updates the snapshot.
+
+`npm run build` runs the verify path first, so an incomplete snapshot fails the
+build instead of shipping a VSIX without the resolver.
+
+## Icon
+
+`images/icon.svg` is the source; `images/icon.png` (256 px) is what
+`package.json` references.
+
+Monochrome: one glyph colour on a neutral tile, no coloured background. The
+geometry is Lucide's `brain-circuit` glyph, scaled into the tile — used rather
+than hand-drawn because hand-drawn silhouettes kept reading as a cloud with
+lines in it. Stroke width and terminal dots are tuned for the smallest place it
+appears (the Extensions list, ~42 px).
+
+Lucide is ISC licensed; the required notice travels with the extension in
+`NOTICE`, which is included in the VSIX.
+
+```bash
+npx -y sharp-cli -i images/icon.svg -o images/icon.png resize 256 256
+```
+

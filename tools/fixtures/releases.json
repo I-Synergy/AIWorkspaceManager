@@ -1,0 +1,21 @@
+{
+  "command": "release",
+  "offline": false,
+  "newer": ["template"],
+  "sources": [
+    {
+      "id": "template",
+      "repo": "I-Synergy/AI",
+      "ref": "v0.1.0",
+      "pinnedTag": true,
+      "current": "v0.1.0",
+      "latest": "v0.2.0",
+      "latestIsPrerelease": false,
+      "newer": true,
+      "tags": ["v0.2.0", "v0.1.0"],
+      "tagCount": 2,
+      "checked": true,
+      "error": null
+    }
+  ]
+}
