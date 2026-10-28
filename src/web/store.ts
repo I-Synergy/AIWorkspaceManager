@@ -278,7 +278,7 @@ class Store extends EventTarget {
         // stays old. Say what to do instead of a bare "Unknown RPC method".
         const staleHost = /Unknown RPC method/i.test(result.error);
         this.notify("error", staleHost
-          ? "AI Manager was updated on disk. Reload the window (Developer: Reload Window), then try again."
+          ? "AI Workspace Manager was updated on disk. Reload the window (Developer: Reload Window), then try again."
           : `Update to ${release}: ${result.error}`);
         return false;
       }

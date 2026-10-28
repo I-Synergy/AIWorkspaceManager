@@ -1,4 +1,4 @@
-# Plan: AI Manager + Per-Repo Selection
+# Plan: AI Workspace Manager + Per-Repo Selection
 
 **Status:** APPROVED 2026-10-27 — Phase 0 executing. Progress: `.ai/progress/ai-manager-selection.md`.
 **Date:** 2026-10-27

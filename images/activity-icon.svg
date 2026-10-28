@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Activity Bar icon for AI Manager.
+  Activity Bar icon for AI Workspace Manager.
 
   VS Code paints view-container icons with the current theme foreground, so this
   is stroke-only with no fill and no tile: it inherits the active/inactive colour

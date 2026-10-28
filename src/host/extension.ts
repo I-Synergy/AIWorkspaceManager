@@ -113,12 +113,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const result = await api.bootstrap({});
     if (!result.ok) {
-      console.warn(`AI Manager: template setup failed: ${result.error}`);
+      console.warn(`AI Workspace Manager: template setup failed: ${result.error}`);
       return;
     }
     const copied = result.value.tooling.copied.length + result.value.scaffold.copied.length;
     if (copied > 0 || result.value.created) {
-      console.log(`AI Manager: set up ${result.value.path} `
+      console.log(`AI Workspace Manager: set up ${result.value.path} `
         + `(${result.value.selected} selected, ${copied} file(s) copied).`);
     }
   };
@@ -136,7 +136,7 @@ export function activate(context: vscode.ExtensionContext): void {
       : await api.remove({ Ids: [item.id], Prune: false });
     if (!result.ok || result.value.code !== 0) {
       const detail = result.ok ? result.value.stderr.trim() : result.error;
-      void vscode.window.showErrorMessage(`AI Manager: ${detail || `${action} failed`}`);
+      void vscode.window.showErrorMessage(`AI Workspace Manager: ${detail || `${action} failed`}`);
     }
     await refreshAll();
   };
@@ -149,12 +149,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("aiManager.vendorTooling", async () => {
       const result = await api.vendorTooling({});
       if (!result.ok) {
-        void vscode.window.showErrorMessage(`AI Manager: ${result.error}`);
+        void vscode.window.showErrorMessage(`AI Workspace Manager: ${result.error}`);
         return;
       }
       const { Copied, Skipped, Manifest } = result.value;
       void vscode.window.showInformationMessage(
-        `AI Manager: wrote ${Copied} file(s), left ${Skipped} alone, manifest ${Manifest}.`);
+        `AI Workspace Manager: wrote ${Copied} file(s), left ${Skipped} alone, manifest ${Manifest}.`);
       await refreshAll();
     }),
     vscode.commands.registerCommand("aiManager.installItem",
@@ -164,11 +164,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("aiManager.sync", async () => {
       const result = await api.sync({});
       if (!result.ok) {
-        void vscode.window.showErrorMessage(`AI Manager: ${result.error}`);
+        void vscode.window.showErrorMessage(`AI Workspace Manager: ${result.error}`);
         return;
       }
       await refreshAll();
-      void vscode.window.showInformationMessage("AI Manager: selection synced.");
+      void vscode.window.showInformationMessage("AI Workspace Manager: selection synced.");
     }),
     vscode.commands.registerCommand("aiManager.openManifest", async () => {
       const root = workspaceRoot();
@@ -272,12 +272,12 @@ class CatalogTreeProvider implements vscode.TreeDataProvider<Node> {
   getTreeItem(element: Node): vscode.TreeItem {
     if (element.kind === "open") {
       const item = new vscode.TreeItem(
-        this.error ? "Could not read the catalog" : "Open AI Manager",
+        this.error ? "Could not read the catalog" : "Open AI Workspace Manager",
         vscode.TreeItemCollapsibleState.None,
       );
       item.tooltip = this.error ?? "Open the full-page catalog manager";
       item.iconPath = new vscode.ThemeIcon(this.error ? "warning" : "library");
-      item.command = { command: "aiManager.open", title: "Open AI Manager" };
+      item.command = { command: "aiManager.open", title: "Open AI Workspace Manager" };
       item.contextValue = "action";
       return item;
     }
@@ -308,7 +308,7 @@ class CatalogTreeProvider implements vscode.TreeDataProvider<Node> {
       item.selected ? new vscode.ThemeColor("charts.green") : undefined,
     );
     node.contextValue = item.selected ? "installedItem" : "availableItem";
-    node.command = { command: "aiManager.open", title: "Open AI Manager" };
+    node.command = { command: "aiManager.open", title: "Open AI Workspace Manager" };
     return node;
   }
 }

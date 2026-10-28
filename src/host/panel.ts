@@ -33,7 +33,7 @@ export class AiManagerPanel implements vscode.Disposable {
     }
     const panel = vscode.window.createWebviewPanel(
       PANEL_ID,
-      "AI Manager",
+      "AI Workspace Manager",
       { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
       {
         enableScripts: true,
@@ -77,7 +77,7 @@ export class AiManagerPanel implements vscode.Disposable {
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} data:; script-src 'nonce-${nonce}';">
   <link rel="stylesheet" href="${styleUri}">
-  <title>AI Manager</title>
+  <title>AI Workspace Manager</title>
 </head>
 <body>
   <ai-manager-app></ai-manager-app>

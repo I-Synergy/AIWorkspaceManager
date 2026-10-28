@@ -1,6 +1,6 @@
-# AI Manager 0.10.0
+# AI Workspace Manager 0.10.0
 
-First Marketplace release of **AI Manager for Visual Studio Code**.
+First Marketplace release of **AI Workspace Manager for VS Code**.
 
 - Browse the whole catalog from both sources and install a selection.
 - See what is installed, what needs attention, and what changed upstream.

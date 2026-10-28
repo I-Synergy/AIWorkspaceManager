@@ -219,7 +219,7 @@ export class SettingsView extends LitElement {
       <section>
         <h2>About</h2>
         <p>
-          AI Manager ${bootstrap?.Version ?? ""} — a front-end for the resolver in
+          AI Workspace Manager ${bootstrap?.Version ?? ""} — a front-end for the resolver in
           <code>.ai/scripts/catalog.py</code>. Every list you see comes from one CLI payload;
           this view holds no resolution logic of its own.
         </p>

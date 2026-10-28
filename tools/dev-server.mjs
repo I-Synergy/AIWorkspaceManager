@@ -1,5 +1,5 @@
 /**
- * Development server for the AI Manager webview.
+ * Development server for the AI Workspace Manager webview.
  *
  * Serves the real bundled UI (`dist/web.js` + `dist/web.css`) against fixture
  * data, so the pages can be opened in a browser — and screenshotted — without
@@ -55,7 +55,7 @@ createServer(async (req, res) => {
   }
   return serve(res, join(TOOLS, url.slice(1)));
 }).listen(PORT, "127.0.0.1", () => {
-  console.log(`AI Manager dev harness: http://localhost:${PORT}`);
+  console.log(`AI Workspace Manager dev harness: http://localhost:${PORT}`);
   console.log(`  light theme: http://localhost:${PORT}/?theme=light`);
   console.log(`  empty repo : http://localhost:${PORT}/?scenario=empty`);
 });

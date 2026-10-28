@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  AI Manager icon: source of truth for images/icon.png.
+  AI Workspace Manager icon: source of truth for images/icon.png.
 
   Monochrome: one glyph colour (#ededed) on a neutral tile (#1f1f1f). No blue
   disc, no gradient.
@@ -16,7 +16,7 @@
   Re-render with:
     npx -y sharp-cli -i images/icon.svg -o images/icon.png resize 256 256
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="256" height="256" role="img" aria-label="AI Manager">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="256" height="256" role="img" aria-label="AI Workspace Manager">
   <rect width="128" height="128" rx="26" ry="26" fill="#1f1f1f"/>
 
   <!-- Lucide viewBox is 24x24; scale 4.4 leaves a comfortable margin, and the

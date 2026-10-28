@@ -110,7 +110,7 @@ async function main() {
     .filter((line) => line && !line.startsWith("#")));
   const missing = entries.filter((entry) => !present.has(entry.replace(/\/$/, "")));
   if (missing.length > 0) {
-    const block = "# AI Manager: resolver cache and platform junctions\n"
+    const block = "# AI Workspace Manager: resolver cache and platform junctions\n"
       + missing.join("\n") + "\n";
     const content = !ignore ? block
       : ignore + (ignore.endsWith("\n") ? "\n" : "\n\n") + block;

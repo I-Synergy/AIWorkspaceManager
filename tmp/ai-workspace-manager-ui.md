@@ -1,12 +1,12 @@
-# Plan: AI Manager — rich UI (NuGet-manager style)
+# Plan: AI Workspace Manager — rich UI (NuGet-manager style)
 
-**Status:** IMPLEMENTED — shipped as **AI Manager for Visual Studio Code** in
+**Status:** IMPLEMENTED — shipped as **AI Workspace Manager for VS Code** in
 `extensions/ai-manager/`. Progress: `.ai/progress/ai-manager-ui.md`.
 **Date:** 2026-10-27
 **Slug:** `ai-manager-ui`
 **Requested by:** User — "a rich ui like we did in D:\Projects\Github\NugetPackageManager … not only to install and update skills, agents etc, but also to select the ones we need per project. We should be able to allow to install everything in a new repo."
 
-> **Name:** the extension is **AI Manager for Visual Studio Code**
+> **Name:** the extension is **AI Workspace Manager for VS Code**
 > (`ai-manager`, publisher `I-Synergy`); the command ids, configuration keys and
 > webview identifiers are all `aiManager.*`.
 

@@ -11,7 +11,7 @@ export function manifestPath(workspaceRoot: string): string {
  *
  * It ships inside the VSIX (`tooling/scripts/catalog.py`) and is pointed at the
  * workspace with `CATALOG_ROOT`, so **a repository needs no copy of these
- * scripts to use AI Manager**. Projects that want the CLI themselves — CI, agents
+ * scripts to use AI Workspace Manager**. Projects that want the CLI themselves — CI, agents
  * in a terminal, a clone without the extension — can vendor it with
  * `aiManager.vendorTooling`; that is a convenience, not a prerequisite.
  */
