@@ -1,8 +1,11 @@
 # AI Workspace Manager for VS Code
 
-A full-page manager for the skills and agents each repository installs. It ships
-the per-repository resolver, so a repository installs **only** what it selected,
-and updates are a diff against a pinned revision rather than a re-clone.
+A full-page manager for the skills and agents each repository installs. The
+catalog comes from [I-Synergy/AI](https://github.com/I-Synergy/AI) and
+[github/awesome-copilot](https://github.com/github/awesome-copilot); see
+[Sources](#sources). It ships the per-repository resolver, so a repository
+installs **only** what it selected, and updates are a diff against a pinned
+revision rather than a re-clone.
 
 ## The problems this solves
 
@@ -53,6 +56,35 @@ hashes, and updates that are a diff against a pinned revision.
 Plus a status-bar-style launcher view in the Explorer with a drift badge, and
 command-palette entries: Open, Select Skills and Agents, Check for Updates,
 Sync Selection.
+
+## Sources
+
+The skills, agents and instructions are not written into this extension. They
+live in two open-source repositories, and a project installs the ones it selects,
+pinned to a revision:
+
+| Source id | Repository | Licence | What it provides |
+|---|---|---|---|
+| `template` | [I-Synergy/AI](https://github.com/I-Synergy/AI) | MIT | The skill, agent, instruction, plugin and hook catalog this extension is built around, plus the resolver (`.ai/scripts/`), vocabulary (`.ai/catalog/`) and schemas that the `tooling/` snapshot vendors |
+| `awesome-copilot` | [github/awesome-copilot](https://github.com/github/awesome-copilot) | MIT | Community-contributed instructions, agents, skills and configurations for GitHub Copilot, offered as a built-in third-party source |
+
+Setup writes both sources into `.ai/ai.json`, so the origin of every item is
+reviewable in a diff:
+
+```jsonc
+"sources": {
+  "template":        { "repo": "I-Synergy/AI",           "ref": "main", "resolve": "remote" },
+  "awesome-copilot": { "repo": "github/awesome-copilot", "ref": "main", "resolve": "remote", "license": "MIT" }
+}
+```
+
+[I-Synergy/AI](https://github.com/I-Synergy/AI) is the upstream project: pinning
+its `ref` to a release tag (for example `v1.6.0`) is what lets the Updates view
+compare against newer releases — see [Requirements](#requirements). Each item
+keeps its source, pinned `ref`, licence and content hash in `.ai/ai.lock.json`,
+and the Browse detail pane shows the same provenance. Licence notices for the
+assets bundled in the VSIX travel in [`NOTICE`](NOTICE); the catalog content
+itself is MIT.
 
 ## Install
 

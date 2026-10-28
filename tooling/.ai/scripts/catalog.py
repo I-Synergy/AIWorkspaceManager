@@ -3064,9 +3064,21 @@ def ensure_readme() -> str:
 # `AGENTS.md` is the source of truth; the Copilot file is generated from it.
 AGENTS_ANCHOR = ".ai/session-context.md"
 COPILOT_FILE = ".github/copilot-instructions.md"
-COPILOT_GENERATED = "<!-- ai-manager:generated-from-agents -->"
-COPILOT_REFERENCE_START = "<!-- ai-manager:copilot-reference:start -->"
-COPILOT_REFERENCE_END = "<!-- ai-manager:copilot-reference:end -->"
+# HTML-comment markers that identify generated regions. The namespace was
+# renamed for this release; LEGACY_MARKER_PREFIX below is the only place the old
+# spelling survives, so files written by an older version can be migrated.
+MARKER_PREFIX = "<!-- ai-workspace-manager:"
+COPILOT_GENERATED = f"{MARKER_PREFIX}generated-from-agents -->"
+COPILOT_REFERENCE_START = f"{MARKER_PREFIX}copilot-reference:start -->"
+COPILOT_REFERENCE_END = f"{MARKER_PREFIX}copilot-reference:end -->"
+INSTALLED_START = f"{MARKER_PREFIX}installed:start -->"
+INSTALLED_END = f"{MARKER_PREFIX}installed:end -->"
+# Pre-rename marker prefix, kept solely for backward compatibility: text read
+# from disk is normalized with it before any anchor is matched, and the next
+# regeneration writes only the current namespace. Removing it would make
+# existing generated files look hand-written (and their reference block get
+# duplicated).
+LEGACY_MARKER_PREFIX = "<!-- ai-manager:"
 # Copilot-only summaries that AGENTS.md does not repeat. They are carried over
 # when the Copilot file is regenerated, so no shared rule is duplicated.
 COPILOT_REFERENCE = (
@@ -3084,9 +3096,14 @@ _ITEM_REF = re.compile(
     r"|agents/(?P<agent>[A-Za-z0-9._-]+)\.md))`"
 )
 _INSTALLED_BLOCK = re.compile(
-    r"## Installed skills and agents\s*\n.*?<!-- ai-manager:installed:end -->",
+    r"## Installed skills and agents\s*\n.*?" + re.escape(INSTALLED_END),
     re.S,
 )
+
+
+def _normalize_markers(text: str) -> str:
+    """Rewrite pre-rename markers to the current namespace (idempotent)."""
+    return str(text or "").replace(LEGACY_MARKER_PREFIX, MARKER_PREFIX)
 
 
 def _first_line(text: str) -> str:
@@ -3116,8 +3133,7 @@ def installed_catalog() -> dict:
 
 
 def _installed_section(catalog: dict) -> str:
-    lines = ["## Installed skills and agents", "",
-             "<!-- ai-manager:installed:start -->"]
+    lines = ["## Installed skills and agents", "", INSTALLED_START]
     for kind, title in (("skills", "Skills"), ("agents", "Agents")):
         if not catalog[kind]:
             continue
@@ -3126,7 +3142,7 @@ def _installed_section(catalog: dict) -> str:
             description = f" — {item['description']}" if item["description"] else ""
             lines.append(f"- `{item['name']}`{description}")
         lines.append("")
-    lines.append("<!-- ai-manager:installed:end -->")
+    lines.append(INSTALLED_END)
     return "\n".join(lines)
 
 
@@ -3197,10 +3213,13 @@ def _copilot_document(agents_text: str, existing: str | None, names: dict) -> st
     """Build the Copilot file from AGENTS.md plus its Copilot-only sections.
 
     A hand-written Copilot file without the template's structure or the
-    generated marker is left alone.
+    generated marker is left alone. Markers from before the namespace rename
+    are normalized first, so such a file is recognized and migrated rather than
+    treated as hand-written.
     """
     reference = ""
     if existing is not None:
+        existing = _normalize_markers(existing)
         generated = COPILOT_GENERATED in existing
         template = "## Work-Type Context Mapping" in existing or "## Project Context" in existing
         if not generated and not template:
@@ -3239,9 +3258,12 @@ def update_instruction_docs() -> dict:
     results = {}
 
     agents_path = _root() / "AGENTS.md"
-    agents_text = agents_path.read_text(encoding="utf-8") if agents_path.is_file() else ""
+    agents_raw = agents_path.read_text(encoding="utf-8") if agents_path.is_file() else ""
+    # Compare against the bytes on disk: a file that only differs by its legacy
+    # markers still has to be rewritten, or the old namespace would survive.
+    agents_text = _normalize_markers(agents_raw)
     if agents_text:
-        original = agents_text
+        original = agents_raw
         if AGENTS_ANCHOR in agents_text:
             agents_text = _filter_item_refs(agents_text, names)
             if _INSTALLED_BLOCK.search(agents_text):

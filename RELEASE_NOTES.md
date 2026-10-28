@@ -1,2 +1,3 @@
-- Renamed to **AI Workspace Manager for VS Code** with the Marketplace name `aiworkspacemanager`; the repository moved to `https://github.com/I-Synergy/AIWorkspaceManager`.
-- Refreshed the UI copy, screenshots, animated demo and social preview.
+- Generated-file markers moved to the `ai-workspace-manager:` namespace (`generated-from-agents`, `copilot-reference:start`/`:end`, `installed:start`/`:end`). Files written with the old markers are still recognized and are rewritten with the new namespace on the next regeneration — no duplicated or lost reference block.
+- README now documents where the catalog comes from: the `I-Synergy/AI` template and `github/awesome-copilot`, with pinned refs, licences and provenance in `.ai/ai.lock.json`.
+- Marketplace categories now include **AI** and **Machine Learning**.
