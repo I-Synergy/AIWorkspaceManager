@@ -1,10 +1,2 @@
-# AI Workspace Manager 0.10.0
-
-First Marketplace release of **AI Workspace Manager for VS Code**.
-
-- Browse the whole catalog from both sources and install a selection.
-- See what is installed, what needs attention, and what changed upstream.
-- Update to the newest template release in one click.
-- Apply one of twelve domain presets with dependencies resolved.
-- Set the project name and intention; the scaffold and `{ApplicationName}` are filled in.
-- `AGENTS.md` is the source of truth; the Copilot instructions are generated from it.
+- Renamed to **AI Workspace Manager for VS Code** with the Marketplace name `aiworkspacemanager`; the repository moved to `https://github.com/I-Synergy/AIWorkspaceManager`.
+- Refreshed the UI copy, screenshots, animated demo and social preview.
