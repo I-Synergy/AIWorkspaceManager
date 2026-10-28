@@ -39,7 +39,7 @@ export function createHostAPI(context: HostApiContext): HostAPI {
     }
     const root = context.workspaceRoot();
     if (!root) {
-      throw new Error("Open a folder before using AI Manager.");
+      throw new Error("Open a folder before using AI Workspace Manager.");
     }
     // The resolver ships with the extension: nothing of it has to exist in the
     // repository being managed.

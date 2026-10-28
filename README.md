@@ -1,4 +1,4 @@
-# AI Manager for Visual Studio Code
+# AI Workspace Manager for VS Code
 
 A full-page manager for the skills and agents each repository installs. It ships
 the per-repository resolver, so a repository installs **only** what it selected,
@@ -26,7 +26,7 @@ hand is where teams lose time:
 - **Updates are risky.** Without a lock and content hashes, an update is a
   re-clone that can delete local changes, and removal has no explicit boundary.
 
-AI Manager makes a repository's selection a first-class, reviewable thing: one
+AI Workspace Manager makes a repository's selection a first-class, reviewable thing: one
 catalog over both sources, a per-repository selection, a lock with content
 hashes, and updates that are a diff against a pinned revision.
 
@@ -56,10 +56,10 @@ Sync Selection.
 
 ## Install
 
-Search for **AI Manager for Visual Studio Code** in the Extensions view, or:
+Search for **AI Workspace Manager for VS Code** in the Extensions view, or:
 
 ```bash
-code --install-extension I-Synergy.ai-manager
+code --install-extension I-Synergy.ai-workspace-manager
 ```
 
 Open a folder and the extension sets up `.ai/` on first activation — the
@@ -67,7 +67,7 @@ resolver, the vocabulary and the supporting project folders.
 
 ## Screenshots
 
-![AI Manager — Browse, Installed, Updates, Presets and Settings](images/screenshots/tabs.gif)
+![AI Workspace Manager — Browse, Installed, Updates, Presets and Settings](images/screenshots/tabs.gif)
 
 | Browse | Installed |
 |---|---|
@@ -100,7 +100,7 @@ resolver, the vocabulary and the supporting project folders.
 
 ## Requirements
 
-- Any folder. On first activation AI Manager sets it up from the template:
+- Any folder. On first activation AI Workspace Manager sets it up from the template:
   `.ai/ai.json`, the resolver and vocabulary under `.ai/` (`.ai/scripts/`,
   `.ai/catalog/`), the supporting folders an agent expects — `analysis`,
   `checklists`, `completed`, `patterns`, `plans`, `progress`, `project`,
@@ -170,7 +170,7 @@ from `src/host`.
 ## Packaging
 
 ```bash
-npm run package   # -> releases/ai-manager-<version>.vsix
+npm run package   # -> releases/ai-workspace-manager-<version>.vsix
 ```
 
 `.vscodeignore` keeps the bundle to the compiled output; the CI workflow asserts
@@ -188,8 +188,8 @@ GitHub Release with the `.vsix`.
    `tools/release.mjs` bumps `package.json` and `package-lock.json`, moves the
    `CHANGELOG.md` entries under Unreleased into the new version, writes
    `RELEASE_NOTES.md`, then commits and pushes.
-3. CI builds and tests; the publish job publishes `I-Synergy.ai-manager`, tags
-   the commit and attaches `ai-manager.vsix` to the GitHub Release.
+3. CI builds and tests; the publish job publishes `I-Synergy.ai-workspace-manager`, tags
+   the commit and attaches `ai-workspace-manager.vsix` to the GitHub Release.
 
 Publishing is skipped when the version's `v<version>` tag already exists, so a
 normal push does not republish an already-released version.

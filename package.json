@@ -1,6 +1,6 @@
 {
-  "name": "ai-manager",
-  "displayName": "AI Manager for Visual Studio Code",
+  "name": "ai-workspace-manager",
+  "displayName": "AI Workspace Manager for VS Code",
   "description": "Browse, install, update and prune the skills and agents each repository installs \u2014 a full-page front-end for .ai/scripts/catalog.py",
   "version": "0.10.0",
   "publisher": "I-Synergy",
@@ -10,13 +10,13 @@
     "color": "#6366f1",
     "theme": "dark"
   },
-  "homepage": "https://github.com/I-Synergy/AIManager#readme",
+  "homepage": "https://github.com/I-Synergy/AIWorkspaceManager#readme",
   "bugs": {
-    "url": "https://github.com/I-Synergy/AIManager/issues"
+    "url": "https://github.com/I-Synergy/AIWorkspaceManager/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/I-Synergy/AIManager.git"
+    "url": "https://github.com/I-Synergy/AIWorkspaceManager.git"
   },
   "engines": {
     "vscode": "^1.90.0"
@@ -48,47 +48,47 @@
     "commands": [
       {
         "command": "aiManager.open",
-        "title": "AI Manager: Open",
+        "title": "AI Workspace Manager: Open",
         "icon": "$(library)"
       },
       {
         "command": "aiManager.setup",
-        "title": "AI Manager: Select Skills and Agents",
+        "title": "AI Workspace Manager: Select Skills and Agents",
         "icon": "$(checklist)"
       },
       {
         "command": "aiManager.updates",
-        "title": "AI Manager: Check for Updates",
+        "title": "AI Workspace Manager: Check for Updates",
         "icon": "$(cloud-download)"
       },
       {
         "command": "aiManager.sync",
-        "title": "AI Manager: Sync Selection",
+        "title": "AI Workspace Manager: Sync Selection",
         "icon": "$(sync)"
       },
       {
         "command": "aiManager.openManifest",
-        "title": "AI Manager: Open .ai/ai.json",
+        "title": "AI Workspace Manager: Open .ai/ai.json",
         "icon": "$(json)"
       },
       {
         "command": "aiManager.refresh",
-        "title": "AI Manager: Refresh",
+        "title": "AI Workspace Manager: Refresh",
         "icon": "$(refresh)"
       },
       {
         "command": "aiManager.installItem",
-        "title": "AI Manager: Install This Item",
+        "title": "AI Workspace Manager: Install This Item",
         "icon": "$(add)"
       },
       {
         "command": "aiManager.removeItem",
-        "title": "AI Manager: Remove This Item",
+        "title": "AI Workspace Manager: Remove This Item",
         "icon": "$(trash)"
       },
       {
         "command": "aiManager.vendorTooling",
-        "title": "AI Manager: Vendor the Resolver Into This Repo",
+        "title": "AI Workspace Manager: Vendor the Resolver Into This Repo",
         "icon": "$(cloud-download)"
       }
     ],
@@ -96,7 +96,7 @@
       "activitybar": [
         {
           "id": "aiManager",
-          "title": "AI Manager",
+          "title": "AI Workspace Manager",
           "icon": "images/activity-icon.svg"
         }
       ]
@@ -105,7 +105,7 @@
       "aiManager": [
         {
           "id": "aiManager.launcher",
-          "name": "AI Manager"
+          "name": "AI Workspace Manager"
         }
       ]
     },
@@ -141,7 +141,7 @@
       ]
     },
     "configuration": {
-      "title": "AI Manager",
+      "title": "AI Workspace Manager",
       "properties": {
         "aiManager.pythonPath": {
           "type": "string",

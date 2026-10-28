@@ -207,7 +207,7 @@ export class AiManagerApp extends LitElement {
       <div class="shell">
         <header>
         <div class="title">
-          <h1>AI Manager</h1>
+          <h1>AI Workspace Manager</h1>
           ${store.bootstrap?.WorkspaceName
             ? html`<span class="repo">· ${store.bootstrap.WorkspaceName}</span>`
             : ""}
@@ -281,8 +281,8 @@ export class AiManagerApp extends LitElement {
   protected override updated(): void {
     const summary = store.browse?.summary;
     document.title = summary
-      ? `AI Manager — ${pluralise(summary.selected, "item")} selected`
-      : "AI Manager";
+      ? `AI Workspace Manager — ${pluralise(summary.selected, "item")} selected`
+      : "AI Workspace Manager";
   }
 }
 customElements.define("ai-manager-app", AiManagerApp);

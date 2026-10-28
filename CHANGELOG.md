@@ -4,7 +4,7 @@
 
 ## 0.10.0 (2026-10-28)
 
-- First Marketplace release of AI Manager for Visual Studio Code.
+- First Marketplace release of AI Workspace Manager for VS Code.
 - Browse, Installed, Updates, Presets and Settings surfaces for the per-repository skill/agent selection.
 - Newer-template-release detection against the source's git tags, with a one-click upgrade to the newest release.
 - Self-contained resolver: the extension ships the `.ai/scripts` tooling and vocabulary, and sets a repository up on first activation.

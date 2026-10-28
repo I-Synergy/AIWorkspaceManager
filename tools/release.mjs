@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Release script for AI Manager for Visual Studio Code.
+// Release script for AI Workspace Manager for VS Code.
 // Usage: node tools/release.mjs [patch|minor|major|X.Y.Z] [--dry-run]
 //
 // - Bumps version in package.json + package-lock.json

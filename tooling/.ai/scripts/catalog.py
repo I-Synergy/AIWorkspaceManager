@@ -889,7 +889,7 @@ def ensure_gitignore() -> str:
     if not missing:
         return "kept"
 
-    block = ("# AI Manager: resolver cache and platform junctions\n"
+    block = ("# AI Workspace Manager: resolver cache and platform junctions\n"
              + "\n".join(missing) + "\n")
     if not text:
         path.write_text(block, encoding="utf-8", newline="\n")
@@ -2940,13 +2940,14 @@ def _describe_project(name: str, intention: str) -> dict:
         ("[What this application does]", purpose),
         ("[DateTime]", today),
         ("**Updated By:** [Claude Code | Copilot | Reasonix Code | User]",
-         "**Updated By:** AI Manager"),
+         "**Updated By:** AI Workspace Manager"),
     ]):
         written.append(".ai/session-context.md")
     elif session.is_file():
         text = session.read_text(encoding="utf-8")
         # A document this form filled earlier: update the purpose in place.
-        if "**Updated By:** AI Manager" in text:
+        if ("**Updated By:** AI Manager" in text
+            or "**Updated By:** AI Workspace Manager" in text):
             if intention:
                 text = _update_line(text, "**Purpose:**", intention)
             text = _update_line(text, "**Last Updated:**", today)
