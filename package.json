@@ -1,6 +1,6 @@
 {
-  "name": "ai-workspace-manager",
-  "displayName": "AI Workspace Manager for VS Code",
+  "name": "aiworkspacemanager",
+  "displayName": "AI Workspace Manager for Visual Studio Code",
   "description": "Browse, install, update and prune the skills and agents each repository installs \u2014 a full-page front-end for .ai/scripts/catalog.py",
   "version": "0.10.0",
   "publisher": "I-Synergy",
@@ -19,7 +19,7 @@
     "url": "https://github.com/I-Synergy/AIWorkspaceManager.git"
   },
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.110.0"
   },
   "capabilities": {
     "untrustedWorkspaces": {

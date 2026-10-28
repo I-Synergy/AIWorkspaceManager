@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Renamed to **AI Workspace Manager for VS Code** with the Marketplace name `aiworkspacemanager`; the repository moved to `https://github.com/I-Synergy/AIWorkspaceManager`.
+- Refreshed the UI copy, screenshots, animated demo and social preview.
+
 ## 0.10.0 (2026-10-28)
 
 - First Marketplace release of AI Workspace Manager for VS Code.

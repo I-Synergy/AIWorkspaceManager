@@ -59,7 +59,7 @@ Sync Selection.
 Search for **AI Workspace Manager for VS Code** in the Extensions view, or:
 
 ```bash
-code --install-extension I-Synergy.ai-workspace-manager
+code --install-extension I-Synergy.aiworkspacemanager
 ```
 
 Open a folder and the extension sets up `.ai/` on first activation — the
@@ -170,7 +170,7 @@ from `src/host`.
 ## Packaging
 
 ```bash
-npm run package   # -> releases/ai-workspace-manager-<version>.vsix
+npm run package   # -> releases/aiworkspacemanager-<version>.vsix
 ```
 
 `.vscodeignore` keeps the bundle to the compiled output; the CI workflow asserts
@@ -188,8 +188,8 @@ GitHub Release with the `.vsix`.
    `tools/release.mjs` bumps `package.json` and `package-lock.json`, moves the
    `CHANGELOG.md` entries under Unreleased into the new version, writes
    `RELEASE_NOTES.md`, then commits and pushes.
-3. CI builds and tests; the publish job publishes `I-Synergy.ai-workspace-manager`, tags
-   the commit and attaches `ai-workspace-manager.vsix` to the GitHub Release.
+3. CI builds and tests; the publish job publishes `I-Synergy.aiworkspacemanager`, tags
+   the commit and attaches `aiworkspacemanager.vsix` to the GitHub Release.
 
 Publishing is skipped when the version's `v<version>` tag already exists, so a
 normal push does not republish an already-released version.
