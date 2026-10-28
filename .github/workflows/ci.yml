@@ -45,7 +45,7 @@ jobs:
         run: |
           mkdir -p releases
           npm run package
-          SIZE=$(stat -c%s releases/ai-workspace-manager-*.vsix)
+          SIZE=$(stat -c%s releases/aiworkspacemanager-*.vsix)
           echo "VSIX size: $SIZE bytes"
           if [ "$SIZE" -gt 2097152 ]; then
             echo "::error::VSIX exceeds 2 MB"
@@ -109,13 +109,13 @@ jobs:
 
       - name: Package .vsix
         if: steps.release_gate.outputs.publish == 'true'
-        run: npx --yes @vscode/vsce package --no-dependencies --out ai-workspace-manager.vsix
+        run: npx --yes @vscode/vsce package --no-dependencies --out aiworkspacemanager.vsix
 
       - name: Create GitHub Release
         if: steps.release_gate.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          files: ai-workspace-manager.vsix
+          files: aiworkspacemanager.vsix
           body_path: RELEASE_NOTES.md
           generate_release_notes: false
