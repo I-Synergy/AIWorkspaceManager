@@ -10,13 +10,13 @@
     "color": "#6366f1",
     "theme": "dark"
   },
-  "homepage": "https://github.com/I-Synergy/AIManager#readme",
+  "homepage": "https://github.com/I-Synergy/AIWorkspaceManager#readme",
   "bugs": {
-    "url": "https://github.com/I-Synergy/AIManager/issues"
+    "url": "https://github.com/I-Synergy/AIWorkspaceManager/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/I-Synergy/AIManager.git"
+    "url": "https://github.com/I-Synergy/AIWorkspaceManager.git"
   },
   "engines": {
     "vscode": "^1.90.0"
