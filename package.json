@@ -2,7 +2,7 @@
   "name": "aiworkspacemanager",
   "displayName": "AI Workspace Manager for Visual Studio Code",
   "description": "Browse, install, update and prune the skills and agents each repository installs — a full-page front-end for .ai/scripts/catalog.py",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "publisher": "I-Synergy",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -27,6 +27,8 @@
     }
   },
   "categories": [
+    "AI",
+    "Machine Learning",
     "Other"
   ],
   "keywords": [

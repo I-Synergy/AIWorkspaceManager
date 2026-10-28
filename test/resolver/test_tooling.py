@@ -503,7 +503,7 @@ def test_the_instructions_follow_the_installed_items(project, tmp_path):
         assert "`lead` — Leads work" in text
 
     copilot = (project / ".github" / "copilot-instructions.md").read_text(encoding="utf-8")
-    assert "<!-- ai-manager:generated-from-agents -->" in copilot
+    assert "<!-- ai-workspace-manager:generated-from-agents -->" in copilot
     assert "# AGENTS" in copilot
     assert "## Project Context" in copilot
     assert "| Missing |" not in copilot
@@ -530,3 +530,64 @@ def test_the_copilot_file_follows_edits_to_agents(project, tmp_path):
 
     copilot = (project / ".github" / "copilot-instructions.md").read_text(encoding="utf-8")
     assert "A new rule." in copilot
+
+
+def test_legacy_markers_are_migrated_on_regeneration(project, tmp_path):
+    """A file written before the namespace rename is rewritten, not duplicated.
+
+    The old prefix is only reachable through the resolver's migration constant,
+    which is the single place the legacy spelling lives.
+    """
+    legacy = catalog.LEGACY_MARKER_PREFIX
+    assert legacy != catalog.MARKER_PREFIX
+
+    source = make_template(tmp_path)
+    write_manifest(project, source)
+    write(project / ".ai" / "skills" / "alpha" / "SKILL.md",
+          "---\nname: alpha\ndescription: Alpha work\n---\n")
+    write(project / "AGENTS.md",
+          "# AGENTS\n\nRead `.ai/session-context.md` first.\n\n"
+          "## Installed skills and agents\n\n"
+          f"{legacy}installed:start -->\n\n- `stale`\n\n"
+          f"{legacy}installed:end -->\n")
+    copilot_path = project / ".github" / "copilot-instructions.md"
+    write(copilot_path,
+          "# GitHub Copilot Instructions\n\n"
+          f"{legacy}generated-from-agents -->\n\n"
+          "# AGENTS\n\nRead `.ai/session-context.md` first.\n\n"
+          f"{legacy}copilot-reference:start -->\n\n"
+          "## Project Context\n\nSee `.ai/project/architecture.md`.\n\n"
+          f"{legacy}copilot-reference:end -->\n")
+
+    result = catalog.update_instruction_docs()
+
+    assert result[".github/copilot-instructions.md"] == "updated"
+    agents = (project / "AGENTS.md").read_text(encoding="utf-8")
+    copilot = copilot_path.read_text(encoding="utf-8")
+    for text in (agents, copilot):
+        assert legacy not in text
+
+    assert agents.count("<!-- ai-workspace-manager:installed:start -->") == 1
+    assert agents.count("<!-- ai-workspace-manager:installed:end -->") == 1
+    assert "- `stale`" not in agents
+    assert "`alpha` — Alpha work" in agents
+
+    assert copilot.count("<!-- ai-workspace-manager:generated-from-agents -->") == 1
+    assert copilot.count("<!-- ai-workspace-manager:copilot-reference:start -->") == 1
+    assert copilot.count("<!-- ai-workspace-manager:copilot-reference:end -->") == 1
+    assert copilot.count("## Project Context") == 1
+    assert "See `.ai/project/architecture.md`." in copilot
+
+    # A file that differs only by its marker namespace is still rewritten: the
+    # normalized text would generate the same document, so the comparison has to
+    # be against the bytes on disk.
+    agents_path = project / "AGENTS.md"
+    agents_path.write_text(agents.replace(catalog.MARKER_PREFIX, legacy),
+                           encoding="utf-8")
+    assert catalog.update_instruction_docs()["AGENTS.md"] == "updated"
+    assert legacy not in agents_path.read_text(encoding="utf-8")
+
+    # The next pass has nothing left to migrate or rewrite.
+    again = catalog.update_instruction_docs()
+    assert again["AGENTS.md"] == "unchanged"
+    assert again[".github/copilot-instructions.md"] == "unchanged"
