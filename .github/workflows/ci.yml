@@ -43,6 +43,7 @@ jobs:
 
       - name: Package and check VSIX size
         run: |
+          mkdir -p releases
           npm run package
           SIZE=$(stat -c%s releases/ai-manager-*.vsix)
           echo "VSIX size: $SIZE bytes"
