@@ -256,7 +256,7 @@ export function releaseNotice(row: ReleaseRow | undefined): ReleaseNotice | null
   if (!row.pinnedTag) {
     // We know what upstream publishes, but not which release (if any) this
     // tree corresponds to. Saying so beats "nothing to compare".
-    const source = row.id === "template" ? "Template" : row.id;
+    const source = row.id === "template" ? "I-Synergy" : row.id;
     return {
       kind: "unpinned",
       label: `${source} release ${row.latest}${candidate} is published`,
@@ -283,7 +283,7 @@ export function emptyUpdateNotice(
       heading: "Nothing to compare",
       hint: "The selected items come from this repository's own tree (source == target), "
         + "so there is no upstream to diff. Pin a remote ref in .ai/ai.json to track "
-        + "template releases, or select items from awesome-copilot.",
+        + "template releases, or select items from a third-party source.",
     };
   }
   return {

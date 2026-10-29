@@ -2,19 +2,23 @@
   "files": [
     {
       "path": ".ai/scripts/catalog.py",
-      "bytes": 150274
+      "bytes": 157931
+    },
+    {
+      "path": ".ai/scripts/sync-platforms.py",
+      "bytes": 5398
     },
     {
       "path": ".ai/scripts/sync-skills.py",
-      "bytes": 4843
+      "bytes": 630
     },
     {
       "path": ".ai/scripts/sync-agents.py",
-      "bytes": 579
+      "bytes": 753
     },
     {
       "path": ".ai/scripts/upgrade-template.py",
-      "bytes": 18655
+      "bytes": 18798
     },
     {
       "path": ".ai/scripts/hygiene-lint.py",
@@ -26,23 +30,23 @@
     },
     {
       "path": "catalog/presets.json",
-      "bytes": 11423
+      "bytes": 12998
     },
     {
       "path": "catalog/categories.json",
-      "bytes": 2314
+      "bytes": 3236
     },
     {
       "path": "catalog/schemas/ai.schema.json",
-      "bytes": 5789
+      "bytes": 6964
     },
     {
       "path": "catalog/schemas/index.schema.json",
-      "bytes": 5428
+      "bytes": 5439
     },
     {
       "path": "catalog/schemas/lock.schema.json",
-      "bytes": 3262
+      "bytes": 3353
     }
   ]
 }

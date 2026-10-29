@@ -45,7 +45,11 @@
         "kind": {
           "enum": [
             "skill",
-            "agent"
+            "agent",
+            "instruction",
+            "prompt",
+            "plugin",
+            "hook"
           ],
           "description": "Item kind, part of the entry's identity. Optional only so older lock files stay readable; catalog.py always writes it."
         },

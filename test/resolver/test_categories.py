@@ -66,3 +66,35 @@ def test_empty_vocabulary_entries_are_still_reported():
     counts = {row["id"]: row["count"] for row in rows}
     assert counts["copilot"] == 1
     assert counts["architecture"] == 0
+
+
+def test_maui_labs_plugins_are_separate_imported_buckets():
+    categories = {entry["id"]: entry for entry in catalog.load_categories()["categories"]}
+    sources = catalog.load_categories()["sources"]
+
+    assert categories["dotnet-maui"]["label"] == "MAUI Labs (dotnet-maui)"
+    assert categories["dotnet-maui-tooling"]["label"] == "MAUI Labs (dotnet-maui-tooling)"
+    assert sources["dotnet-maui"]["category"] == "dotnet-maui"
+    assert sources["dotnet-maui-tooling"]["category"] == "dotnet-maui-tooling"
+
+
+def test_aspire_skills_is_its_own_imported_bucket():
+    categories = {entry["id"]: entry for entry in catalog.load_categories()["categories"]}
+    sources = catalog.load_categories()["sources"]
+
+    assert categories["aspire-skills"]["label"] == "Aspire Skills"
+    assert sources["aspire-skills"]["category"] == "aspire-skills"
+
+
+def test_imported_buckets_keep_the_vocabulary_order_behind_our_own():
+    rows = catalog._category_rows([
+        {"category": "dotnet-maui", "source": "dotnet-maui"},
+        {"category": "dotnet-maui-tooling", "source": "dotnet-maui-tooling"},
+        {"category": "aspire-skills", "source": "aspire-skills"},
+        {"category": "copilot", "source": "awesome-copilot"},
+        {"category": "docs", "source": "template"},
+    ])
+
+    assert visible(rows) == [
+        "docs", "copilot", "aspire-skills", "dotnet-maui", "dotnet-maui-tooling",
+    ]

@@ -22,7 +22,7 @@
     },
     "items": {
       "type": "array",
-      "description": "Every available skill and agent, sorted by id then kind.",
+      "description": "Every available item, sorted by id then kind.",
       "items": {
         "$ref": "#/$defs/item"
       }
@@ -89,6 +89,7 @@
             "skill",
             "agent",
             "instruction",
+            "prompt",
             "plugin",
             "hook"
           ],

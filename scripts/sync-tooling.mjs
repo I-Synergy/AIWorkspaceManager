@@ -27,6 +27,7 @@ const OUT = join(EXTENSION, "tooling");
 const FILES = [
   // The resolver and the scripts it drives.
   [".ai/scripts/catalog.py", ".ai/scripts/catalog.py"],
+  [".ai/scripts/sync-platforms.py", ".ai/scripts/sync-platforms.py"],
   [".ai/scripts/sync-skills.py", ".ai/scripts/sync-skills.py"],
   [".ai/scripts/sync-agents.py", ".ai/scripts/sync-agents.py"],
   [".ai/scripts/upgrade-template.py", ".ai/scripts/upgrade-template.py"],
@@ -61,6 +62,7 @@ async function templateRoot() {
     // The resolver may live only in this bundle (the template can drop it once
     // the extension ships it), so any resolver sibling identifies a checkout.
     if (await exists(join(candidate, ".ai", "scripts", "catalog.py"))
+      || await exists(join(candidate, ".ai", "scripts", "sync-platforms.py"))
       || await exists(join(candidate, ".ai", "scripts", "sync-skills.py"))) {
       return candidate;
     }

@@ -71,7 +71,9 @@ customElements.define("empty-state", EmptyState);
 export function kindIcon(kind: string) {
   const path = kind === "agent"
     ? "M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 1.5c-2.7 0-5 1.6-5 3.5V15h10v-2c0-1.9-2.3-3.5-5-3.5Z"
-    : "M3 2.5A1.5 1.5 0 0 1 4.5 1h7A1.5 1.5 0 0 1 13 2.5v11l-5-2.2L3 13.5V2.5Z";
+    : kind === "prompt"
+      ? "M3 2.5h10v8H8l-3 2.5V10.5H3v-8Zm2 2v1h6v-1H5Zm0 3v1h4V7.5H5Z"
+      : "M3 2.5A1.5 1.5 0 0 1 4.5 1h7A1.5 1.5 0 0 1 13 2.5v11l-5-2.2L3 13.5V2.5Z";
   return html`<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
     <path d=${path} fill="currentColor" />
   </svg>`;

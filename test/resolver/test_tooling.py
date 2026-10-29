@@ -41,7 +41,7 @@ def make_template(tmp_path: Path) -> Path:
     """A stand-in template checkout with the resolver and vocabulary."""
     source = tmp_path / "template"
     write(source / ".ai" / "scripts" / "catalog.py", "# release catalog\n")
-    write(source / ".ai" / "scripts" / "sync-skills.py",
+    write(source / ".ai" / "scripts" / "sync-platforms.py",
           'from pathlib import Path\nPath("mirror-ran.txt").write_text("yes")\n')
     write(source / ".ai" / "scripts" / "sync-agents.py", "# agents mirror\n")
     write(source / ".ai" / "scripts" / "upgrade-template.py", "# upgrade\n")
@@ -326,6 +326,69 @@ def test_bootstrap_sets_up_the_manifest_tooling_and_scaffold(project, tmp_path, 
     assert not (project / "catalog").exists()
 
 
+def test_bootstrap_adds_a_new_builtin_source_to_an_existing_manifest(
+        project, tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("CATALOG_OFFLINE", raising=False)
+    source = make_template(tmp_path)
+    write_manifest(project, source)
+    before = json.loads((project / ".ai" / "ai.json").read_text(encoding="utf-8"))
+    before["sources"]["awesome-copilot"] = {
+        "repo": "github/awesome-copilot", "ref": "main",
+        "resolve": "remote", "license": "MIT",
+    }
+    before["skills"] = ["alpha"]
+    (project / ".ai" / "ai.json").write_text(json.dumps(before, indent=2), encoding="utf-8")
+
+    payload = run_json(capsys, "bootstrap", "--json")
+
+    manifest = json.loads((project / ".ai" / "ai.json").read_text(encoding="utf-8"))
+    assert payload["sourcesAdded"] == ["aspire-skills", "dotnet-maui", "dotnet-maui-tooling"]
+    assert manifest["sources"]["awesome-copilot"] == before["sources"]["awesome-copilot"]
+    assert manifest["sources"]["aspire-skills"]["repo"] == "microsoft/aspire-skills"
+    assert manifest["sources"]["dotnet-maui"]["repo"] == "dotnet/maui-labs"
+    # The selection is untouched.
+    assert manifest["skills"] == ["alpha"]
+
+
+def test_bootstrap_does_not_add_sources_offline(project, tmp_path, capsys):
+    source = make_template(tmp_path)
+    write_manifest(project, source)
+
+    payload = run_json(capsys, "bootstrap", "--json")
+
+    manifest = json.loads((project / ".ai" / "ai.json").read_text(encoding="utf-8"))
+    assert payload["sourcesAdded"] == []
+    assert set(manifest["sources"]) == {"template"}
+
+
+def test_prune_preserves_lock_entries_of_a_kind_this_resolver_does_not_know(
+        project, tmp_path, monkeypatch, capsys):
+    source = make_template(tmp_path)
+    write_manifest(project, source)
+    prompt = project / ".ai" / "prompts" / "legacy.prompt.md"
+    write(prompt, "---\nname: legacy\n---\n")
+    write(project / ".ai" / "ai.lock.json", json.dumps({
+        "lockVersion": 1,
+        "resolved": [{
+            "id": "template:legacy", "kind": "prompt", "source": "template",
+            "ref": "v1", "path": ".ai/prompts/legacy.prompt.md",
+            "sha256": "0" * 64, "files": 1, "license": "MIT",
+            "upstream": "https://example.invalid", "materialize": "copy",
+        }],
+    }, indent=2))
+    # Simulate an older resolver: it has no `prompt` kind, so it cannot reason
+    # about the entry the newer client wrote.
+    monkeypatch.setattr(catalog, "KINDS",
+                        tuple(kind for kind in catalog.KINDS if kind != "prompt"))
+
+    payload = run_json(capsys, "sync", "--prune", "--json")
+
+    assert prompt.is_file()
+    assert payload["preservedUnknown"] == ["template:legacy"]
+    lock = json.loads((project / ".ai" / "ai.lock.json").read_text(encoding="utf-8"))
+    assert [entry["kind"] for entry in lock["resolved"]] == ["prompt"]
+
+
 def test_migrate_moves_a_root_catalog_into_ai(project):
     write(project / ".ai" / "ai.json", json.dumps({
         "version": 1,
@@ -424,6 +487,8 @@ def test_gitignore_includes_the_platform_junctions(project, tmp_path):
     text = (project / ".gitignore").read_text(encoding="utf-8")
     for entry in (".ai/tmp/", ".claude/skills/", ".claude/agents/",
                   ".github/skills/", ".github/agents/",
+                  ".github/instructions/", ".github/prompts/",
+                  ".claude/commands/", ".claude/instructions/",
                   ".reasonix/skills/", ".reasonix/agents/",
                   "__pycache__/", ".pytest_cache/"):
         assert entry in text, entry

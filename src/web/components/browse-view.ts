@@ -253,6 +253,7 @@ export class BrowseView extends LitElement {
           <option value="skill">Skills</option>
           <option value="agent">Agents</option>
           <option value="instruction">Instructions</option>
+          <option value="prompt">Prompts</option>
           <option value="plugin">Plugins</option>
           <option value="hook">Hooks</option>
         </select>
