@@ -80,9 +80,28 @@ async function main() {
       "$schema": "catalog/schemas/ai.schema.json",
       version: 1,
       sources: {
-        template: { repo: "I-Synergy/AI", ref: "main", resolve: "remote" },
+        "template": { repo: "I-Synergy/AI", ref: "main", resolve: "remote" },
+        "aspire-skills": {
+          repo: "microsoft/aspire-skills", ref: "main", resolve: "remote", license: "MIT",
+        },
         "awesome-copilot": {
           repo: "github/awesome-copilot", ref: "main", resolve: "remote", license: "MIT",
+        },
+        "dotnet-maui": {
+          repo: "dotnet/maui-labs", ref: "main", resolve: "remote", license: "MIT",
+          paths: {
+            skill: ["plugins/dotnet-maui/skills"],
+            agent: [".github/agents"],
+            instruction: [".github/instructions"],
+            plugin: [], hook: [],
+          },
+        },
+        "dotnet-maui-tooling": {
+          repo: "dotnet/maui-labs", ref: "main", resolve: "remote", license: "MIT",
+          paths: {
+            skill: ["plugins/dotnet-maui-tooling/skills"],
+            agent: [], instruction: [], plugin: [], hook: [],
+          },
         },
       },
       skills: [], agents: [], instructions: [], plugins: [], hooks: [],
@@ -96,6 +115,8 @@ async function main() {
   const entries = [
     "__pycache__/", "*.py[cod]", ".pytest_cache/", ".ai/tmp/",
     ".claude/skills/", ".claude/agents/", ".github/skills/", ".github/agents/",
+    ".github/instructions/", ".github/prompts/",
+    ".claude/commands/", ".claude/instructions/",
     ".reasonix/skills/", ".reasonix/agents/",
   ];
   const gitignore = join(target, ".gitignore");

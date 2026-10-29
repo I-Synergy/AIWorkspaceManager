@@ -15,7 +15,7 @@ export function fail<T = never>(error: string): Result<T> {
   return { ok: false, error };
 }
 
-export type ItemKind = "skill" | "agent" | "instruction" | "plugin" | "hook";
+export type ItemKind = "skill" | "agent" | "instruction" | "prompt" | "plugin" | "hook";
 
 export interface Bootstrap {
   WorkspaceName: string;
@@ -40,7 +40,7 @@ export interface PresetCard {
   description: string;
   skills: number;
   agents: number;
-  /** The preset the UI leads with; `full` stays available but not promoted. */
+  /** The preset the UI leads with; `Everything` stays available but not promoted. */
   recommended?: boolean;
 }
 

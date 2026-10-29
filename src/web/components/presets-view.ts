@@ -5,7 +5,7 @@ import { sharedStyles } from "../styles/shared.css";
 import "./parts";
 
 /**
- * Presets: the new-repository story. Recommended preset first-class, `full`
+ * Presets: the new-repository story. Recommended preset first-class, `Everything`
  * one click away and labelled with its real size — the resolver exists because
  * installing everything is expensive, so the UI must not hide that fact.
  */
@@ -89,10 +89,10 @@ export class PresetsView extends LitElement {
   ];
 
   override render() {
-    // The payload order is the curated order in presets.json; only `full`
+    // The payload order is the curated order in presets.json; only `Everything`
     // moves, because it is the escape hatch rather than a starting point.
     const presets = [...(store.presets?.presets ?? store.browse?.presets ?? [])]
-      .sort((a, b) => Number(a.name === "full") - Number(b.name === "full"));
+      .sort((a, b) => Number(a.name === "Everything") - Number(b.name === "Everything"));
     const current = store.presets?.current ?? null;
     const items = store.browse?.items ?? [];
     const installedSkills = items.filter((item) => item.selected && item.kind === "skill").length;
@@ -107,7 +107,7 @@ export class PresetsView extends LitElement {
       <div class="grid">
         ${presets.map((preset) => {
           const delta = presetDelta(preset, installedSkills, installedAgents);
-          const isFull = preset.name === "full";
+          const isEverything = preset.name === "Everything";
           const isRecommended = preset.recommended === true;
           const isCurrent = preset.name === current;
           return html`
@@ -116,7 +116,7 @@ export class PresetsView extends LitElement {
                 ${preset.name}
                 ${isCurrent ? html`<span class="pill ok">current</span>` : ""}
                 ${isRecommended && !isCurrent ? html`<span class="pill ok">recommended</span>` : ""}
-                ${isFull ? html`<span class="pill warn">everything</span>` : ""}
+                ${isEverything ? html`<span class="pill warn">everything</span>` : ""}
               </h2>
               <p>${preset.description || "(no description)"}</p>
               <div class="counts">

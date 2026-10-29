@@ -58,15 +58,42 @@
       "description": "Items imported from the awesome-copilot catalog."
     },
     {
+      "id": "aspire-skills",
+      "label": "Aspire Skills",
+      "description": "Official Aspire skills imported from microsoft/aspire-skills."
+    },
+    {
+      "id": "dotnet-maui",
+      "label": "MAUI Labs (dotnet-maui)",
+      "description": "MAUI app, desktop-backend and native-binding skills imported from the dotnet-maui plugin in dotnet/maui-labs."
+    },
+    {
+      "id": "dotnet-maui-tooling",
+      "label": "MAUI Labs (dotnet-maui-tooling)",
+      "description": "DevFlow, workload and binding-tooling skills imported from the dotnet-maui-tooling plugin in dotnet/maui-labs."
+    },
+    {
       "id": "uncategorised",
-      "label": "Template",
-      "description": "Items from this template that declare no category."
+      "label": "I-Synergy",
+      "description": "Items from the I-Synergy template that declare no category."
     }
   ],
   "sources": {
     "awesome-copilot": {
       "category": "copilot",
       "default": "uncategorised"
+    },
+    "aspire-skills": {
+      "category": "aspire-skills",
+      "default": "aspire-skills"
+    },
+    "dotnet-maui": {
+      "category": "dotnet-maui",
+      "default": "dotnet-maui"
+    },
+    "dotnet-maui-tooling": {
+      "category": "dotnet-maui-tooling",
+      "default": "dotnet-maui-tooling"
     }
   }
 }

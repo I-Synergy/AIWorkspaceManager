@@ -1,16 +1,17 @@
 # AI Workspace Manager for VS Code
 
-A full-page manager for the skills and agents each repository installs. The
-catalog comes from [I-Synergy/AI](https://github.com/I-Synergy/AI) and
-[github/awesome-copilot](https://github.com/github/awesome-copilot); see
+A full-page manager for the skills, agents, instructions and prompts each repository installs. The
+catalog comes from [I-Synergy/AI](https://github.com/I-Synergy/AI),
+[github/awesome-copilot](https://github.com/github/awesome-copilot) and
+[dotnet/maui-labs](https://github.com/dotnet/maui-labs); see
 [Sources](#sources). It ships the per-repository resolver, so a repository
 installs **only** what it selected, and updates are a diff against a pinned
 revision rather than a re-clone.
 
 ## The problems this solves
 
-Copilot, Claude Code and Reasonix/DeepSeek only follow the skills, agents and
-instructions that are present in the repository. Getting that content there by
+Copilot, Claude Code and Reasonix/DeepSeek only follow the skills, agents,
+instructions and prompts that are present in the repository. Getting that content there by
 hand is where teams lose time:
 
 - **All-or-nothing adoption.** Cloning a template brings every skill and agent,
@@ -21,8 +22,9 @@ hand is where teams lose time:
   template-owned, which the project changed, or which are stale.
 - **No provenance.** It is hard to answer where an item came from, which revision
   it was installed from, its licence, or whether upstream has moved.
-- **Sources do not compose.** The template catalog and `awesome-copilot` overlap;
-  duplicates, name collisions and missing requirements surface only after install.
+- **Sources do not compose.** The template catalog, `awesome-copilot`, the two
+  MAUI Labs sources and `aspire-skills` overlap; duplicates, name collisions and
+  missing requirements surface only after install.
 - **Setup is manual.** A new repository needs the resolver, vocabulary,
   `AGENTS.md`, Copilot instructions, Claude settings, project folders and the
   `.claude` / `.github` / `.reasonix` junctions — often by running several scripts.
@@ -30,12 +32,12 @@ hand is where teams lose time:
   re-clone that can delete local changes, and removal has no explicit boundary.
 
 AI Workspace Manager makes a repository's selection a first-class, reviewable thing: one
-catalog over both sources, a per-repository selection, a lock with content
+catalog over all sources, a per-repository selection, a lock with content
 hashes, and updates that are a diff against a pinned revision.
 
 | Problem | What the extension does |
 |---|---|
-| Choosing what to install | Browse both sources, filter, bulk-select, and apply presets with dependencies resolved |
+| Choosing what to install | Browse all sources, filter, bulk-select, and apply presets with dependencies resolved |
 | Keeping it current | Compares the pinned ref with the source's release tags and offers a one-click upgrade to the newest release |
 | Protecting local work | `local-modified` / `upstream-changed` / `conflict` states; nothing is overwritten without an explicit choice |
 | Knowing what is installed | Installed view grouped by health, with provenance, path, licence and install mode |
@@ -50,7 +52,7 @@ hashes, and updates that are a diff against a pinned revision.
 | **Browse** | The whole catalog: search, filter by kind / source / state, detail pane with provenance. Tick rows that are not installed yet (already-installed rows are disabled — manage those in Installed) for a bulk install that works across filters, or install everything the current filter matches |
 | **Installed** | What this repo has, grouped by state — needs attention first. Search and filter by kind / source / health (in sync, needs attention, not materialised), tick rows to remove several at once, plus sync, per-item remove and prune for deselected leftovers |
 | **Updates** | Items whose catalog content moved upstream, with the four states (unchanged / upstream-changed / modified here / conflict) and *update all safe* — plus search and kind / source / ready-vs-conflict filters, and a banner when the pinned ref is older than the source's newest release tag |
-| **Presets** | Named selections with resolved counts and the delta against the current choice: twelve domain presets (Architecture, Security, Design, Review, Devops, .NET Core / MAUI / WPF / WinUI, Web & Blazor, writing, tools) drawing on both sources, with dependencies resolved; `full` is last and labelled with its real size |
+| **Presets** | Named selections with resolved counts and the delta against the current choice: fourteen domain presets, alphabetical (Architecture, Aspire, Books & writing, Design, Devops, .NET Core / MAUI / Web & Blazor / WinUI / WPF, Review, Security), with **Tools** at 13, **Minimal** at 14 and **Everything** last; drawing on all four repositories, dependencies resolved |
 | **Settings** | Interpreter, project name/intention, sources table (repo / ref / release / resolve / licence / hooks), maintenance actions |
 
 Plus a status-bar-style launcher view in the Explorer with a drift badge, and
@@ -59,24 +61,51 @@ Sync Selection.
 
 ## Sources
 
-The skills, agents and instructions are not written into this extension. They
-live in two open-source repositories, and a project installs the ones it selects,
-pinned to a revision:
+The skills, agents, instructions and prompts are not written into this extension. They
+live in four open-source repositories, and a project installs the ones it
+selects, pinned to a revision:
 
 | Source id | Repository | Licence | What it provides |
 |---|---|---|---|
-| `template` | [I-Synergy/AI](https://github.com/I-Synergy/AI) | MIT | The skill, agent, instruction, plugin and hook catalog this extension is built around, plus the resolver (`.ai/scripts/`), vocabulary (`.ai/catalog/`) and schemas that the `tooling/` snapshot vendors |
+| `template` | [I-Synergy/AI](https://github.com/I-Synergy/AI) | MIT | The skill, agent, instruction, prompt, plugin and hook catalog this extension is built around, plus the resolver (`.ai/scripts/`), vocabulary (`.ai/catalog/`) and schemas that the `tooling/` snapshot vendors |
 | `awesome-copilot` | [github/awesome-copilot](https://github.com/github/awesome-copilot) | MIT | Community-contributed instructions, agents, skills and configurations for GitHub Copilot, offered as a built-in third-party source |
+| `aspire-skills` | [microsoft/aspire-skills](https://github.com/microsoft/aspire-skills) | MIT | Official Aspire skills for initializing, wiring, orchestrating, monitoring and deploying distributed apps |
+| `dotnet-maui` | [dotnet/maui-labs](https://github.com/dotnet/maui-labs) | MIT | MAUI app, desktop-backend and native-binding skills from that repository's `dotnet-maui` plugin, plus its agents and instructions |
+| `dotnet-maui-tooling` | [dotnet/maui-labs](https://github.com/dotnet/maui-labs) | MIT | DevFlow, workload and binding-tooling skills from that repository's `dotnet-maui-tooling` plugin |
 
-Setup writes both sources into `.ai/ai.json`, so the origin of every item is
+Setup writes all five sources into `.ai/ai.json`, so the origin of every item is
 reviewable in a diff:
 
 ```jsonc
 "sources": {
-  "template":        { "repo": "I-Synergy/AI",           "ref": "main", "resolve": "remote" },
-  "awesome-copilot": { "repo": "github/awesome-copilot", "ref": "main", "resolve": "remote", "license": "MIT" }
+  "template":   { "repo": "I-Synergy/AI",           "ref": "main", "resolve": "remote" },
+  "aspire-skills": { "repo": "microsoft/aspire-skills", "ref": "main", "resolve": "remote", "license": "MIT" },
+  "awesome-copilot": { "repo": "github/awesome-copilot", "ref": "main", "resolve": "remote", "license": "MIT" },
+  "dotnet-maui": { "repo": "dotnet/maui-labs", "ref": "main", "resolve": "remote", "license": "MIT",
+                   "paths": {
+                     "skill":       ["plugins/dotnet-maui/skills"],
+                     "agent":       [".github/agents"],
+                     "instruction": [".github/instructions"],
+                     "plugin": [], "hook": []
+                   } },
+  "dotnet-maui-tooling": { "repo": "dotnet/maui-labs", "ref": "main", "resolve": "remote", "license": "MIT",
+                   "paths": {
+                     "skill": ["plugins/dotnet-maui-tooling/skills"],
+                     "agent": [], "instruction": [], "plugin": [], "hook": []
+                   } }
 }
 ```
+
+Most sources keep each kind at `skills/`, `agents/` or `instructions/` at the
+repository root. `paths` exists for a repository like MAUI Labs that nests its
+items: every listed directory is read, an empty list disables that kind, and the
+Browse detail pane shows the real `sourcePath` (for example
+`plugins/dotnet-maui/skills/maui-performance`).
+
+Prompts are read from `prompts/` (`.prompt.md`, or plain `.md`) and installed
+under `.ai/prompts/`. Instructions and prompts are mirrored to
+`.claude/instructions/` + `.github/instructions/` and `.claude/commands/` +
+`.github/prompts/` respectively, like the skill and agent junctions.
 
 [I-Synergy/AI](https://github.com/I-Synergy/AI) is the upstream project: pinning
 its `ref` to a release tag (for example `v1.6.0`) is what lets the Updates view
@@ -115,10 +144,14 @@ resolver, the vocabulary and the supporting project folders.
   from one `catalog.py --json` call. The extension holds no resolution logic, so
   it cannot drift from what CI enforces (`sync --check`, `index --verify`).
 - **Loud about cost.** The resolver exists because 530 installed skills is
-  noise. Presets are recommended, `full` is never the default but never hidden,
+  noise. Presets are recommended, `Everything` is never the default but never hidden,
   and the delta on every card says how many items it would add or remove.
 - **Nothing destructive by default.** Removing edits `.ai/ai.json` only; files
-  leave disk only through an explicit Prune, which says so on the button.
+  leave disk only through an explicit Prune, which says so on the button. Prune
+  deletes every lock-recorded item not in the current selection, so run it
+  deliberately. The current resolver preserves lock entries for kinds it does
+  not know; an older client does not, so upgrade before pruning a project that
+  uses newer kinds such as prompts.
 - **The template owns its resolver; the project owns everything else.**
   Setup writes the whole `.ai/scripts/` set (resolver, mirrors, hygiene,
   migration, upgrade), the vocabulary under `.ai/catalog/`, and the supporting
@@ -139,7 +172,8 @@ resolver, the vocabulary and the supporting project folders.
   `reference` and `session-context.md` — and the agent configuration:
   `AGENTS.md`, `.github/copilot-instructions.md`, `.claude/settings.json` and
   `.gitattributes`. Nothing project-owned is overwritten; the same setup can be
-  re-run from Settings.
+  re-run from Settings. On an existing project, setup also adds any newly
+  offered third-party source to `.ai/ai.json`, leaving the selection untouched.
 - Python on `PATH`, or set `aiManager.pythonPath`. The resolver itself ships
   inside the VSIX.
 

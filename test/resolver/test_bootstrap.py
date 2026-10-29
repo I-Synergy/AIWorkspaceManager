@@ -130,6 +130,43 @@ def test_starter_manifest_offers_the_copilot_source_when_online(bare_project, mo
     }
 
 
+def test_starter_manifest_offers_the_aspire_source_when_online(bare_project, monkeypatch):
+    monkeypatch.delenv("CATALOG_OFFLINE", raising=False)
+
+    sources = catalog.starter_manifest()["sources"]
+
+    assert sources["aspire-skills"] == {
+        "repo": "microsoft/aspire-skills", "ref": "main",
+        "resolve": "remote", "license": "MIT",
+    }
+
+
+def test_starter_manifest_offers_the_maui_labs_sources_with_their_nested_layout(
+        bare_project, monkeypatch):
+    monkeypatch.delenv("CATALOG_OFFLINE", raising=False)
+
+    sources = catalog.starter_manifest()["sources"]
+
+    assert sources["dotnet-maui"] == {
+        "repo": "dotnet/maui-labs", "ref": "main",
+        "resolve": "remote", "license": "MIT",
+        "paths": {
+            "skill": ["plugins/dotnet-maui/skills"],
+            "agent": [".github/agents"],
+            "instruction": [".github/instructions"],
+            "plugin": [], "hook": [],
+        },
+    }
+    assert sources["dotnet-maui-tooling"] == {
+        "repo": "dotnet/maui-labs", "ref": "main",
+        "resolve": "remote", "license": "MIT",
+        "paths": {
+            "skill": ["plugins/dotnet-maui-tooling/skills"],
+            "agent": [], "instruction": [], "plugin": [], "hook": [],
+        },
+    }
+
+
 def test_starter_manifest_leaves_third_party_sources_out_offline(bare_project):
     # They could not be fetched, and a source that cannot resolve would make
     # every read command fail.

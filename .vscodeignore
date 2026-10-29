@@ -22,6 +22,7 @@ images/social-preview.png
 
 # Workspace, test and agent noise that must never ship
 .gitignore
+social.md
 tmp/**
 .pytest_cache/**
 .reasonix/**

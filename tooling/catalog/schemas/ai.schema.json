@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/I-Synergy/AI/catalog/schemas/ai.schema.json",
-  "title": "AI skill/agent selection manifest",
-  "description": "Project-owned selection manifest (.ai/ai.json). Lists the skills and agents a project installs from the catalog. Ids are namespaced 'source:id'; ids from the 'template' source may be written bare.",
+  "title": "AI skill/agent/instruction/prompt selection manifest",
+  "description": "Project-owned selection manifest (.ai/ai.json). Lists the skills, agents, instructions, prompts, plugins and hooks a project installs from the catalog. Ids are namespaced 'source:id'; ids from the 'template' source may be written bare.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -78,6 +78,14 @@
         "$ref": "#/$defs/selectionId"
       }
     },
+    "prompts": {
+      "type": "array",
+      "description": "Selection ids of prompt files to install into .ai/prompts/.",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/selectionId"
+      }
+    },
     "plugins": {
       "type": "array",
       "description": "Selection ids of plugins to install into .ai/plugins/.",
@@ -140,6 +148,30 @@
         "allowHooks": {
           "type": "boolean",
           "description": "Opt in to third-party hooks, MCP servers and workflows. A source that ships hooks/, mcp.json or workflows/ is refused unless this is true; skills and agents are prose, those three are executable-adjacent."
+        },
+        "paths": {
+          "type": "object",
+          "description": "Optional directories to read each kind from, relative to the source root. Most sources keep items at `skills/`, `agents/` and `instructions/`, so this is omitted. A source with a nested layout (for example MAUI Labs' `plugins/<plugin>/skills`) lists every directory for that kind.",
+          "propertyNames": {
+            "enum": [
+              "skill",
+              "agent",
+              "instruction",
+              "prompt",
+              "plugin",
+              "hook"
+            ]
+          },
+          "additionalProperties": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "One directory, or a list of directories, holding that kind inside the source."
+          }
         },
         "enabled": {
           "type": "boolean",

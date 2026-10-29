@@ -88,11 +88,12 @@ DEFAULT_REPO = "I-Synergy/AI"
 DEFAULT_REF = "local"
 LICENSE = "MIT"
 
-KINDS = ("skill", "agent", "instruction", "plugin", "hook")
+KINDS = ("skill", "agent", "instruction", "prompt", "plugin", "hook")
 MANIFEST_KEYS = {
     "skill": "skills",
     "agent": "agents",
     "instruction": "instructions",
+    "prompt": "prompts",
     "plugin": "plugins",
     "hook": "hooks",
 }
@@ -102,6 +103,7 @@ KIND_DIRS = {
     "skill": "skills",
     "agent": "agents",
     "instruction": "instructions",
+    "prompt": "prompts",
     "plugin": "plugins",
     "hook": "hooks",
 }
@@ -110,6 +112,7 @@ KIND_SUFFIX = {
     "skill": "",            # a directory
     "agent": ".md",         # a single file
     "instruction": ".instructions.md",
+    "prompt": ".prompt.md",
     "plugin": "",           # a directory
     "hook": "",             # a directory
 }
@@ -117,11 +120,50 @@ KIND_SUFFIX = {
 # records them in the manifest so they are visible and pinnable; `enabled: false`
 # switches one off.
 BUILTIN_SOURCES = {
+    # The official Aspire skills are offered before awesome-copilot because both
+    # ship a skill named `aspire`; the official one should keep the name.
+    "aspire-skills": {
+        "repo": "microsoft/aspire-skills",
+        "ref": "main",
+        "resolve": "remote",
+        "license": "MIT",
+    },
     "awesome-copilot": {
         "repo": "github/awesome-copilot",
         "ref": "main",
         "resolve": "remote",
         "license": "MIT",
+    },
+    # MAUI Labs does not keep its skills at the source root: each plugin under
+    # `plugins/` owns its own `skills/` tree, and the repository's agents and
+    # instructions live under `.github/`. Its two plugins are offered as two
+    # sources so an item's origin is visible in its id. Paths are explicit, and
+    # the empty lists switch off the kinds that source does not contribute.
+    "dotnet-maui": {
+        "repo": "dotnet/maui-labs",
+        "ref": "main",
+        "resolve": "remote",
+        "license": "MIT",
+        "paths": {
+            "skill": ["plugins/dotnet-maui/skills"],
+            "agent": [".github/agents"],
+            "instruction": [".github/instructions"],
+            "plugin": [],
+            "hook": [],
+        },
+    },
+    "dotnet-maui-tooling": {
+        "repo": "dotnet/maui-labs",
+        "ref": "main",
+        "resolve": "remote",
+        "license": "MIT",
+        "paths": {
+            "skill": ["plugins/dotnet-maui-tooling/skills"],
+            "agent": [],
+            "instruction": [],
+            "plugin": [],
+            "hook": [],
+        },
     },
 }
 
@@ -188,25 +230,38 @@ def _installed_dir() -> Path:
 def _kind_dir(kind: str, root: Path | None = None, source: str = DEFAULT_SOURCE) -> Path:
     """Where a kind's items are installed — always under `.ai/`.
 
-    `.github/` is a mirror produced by sync-skills.py junctions, never the place
+    `.github/` is a mirror produced by sync-platforms.py junctions, never the place
     an install writes to.
     """
     base = Path(root if root is not None else _root()) / ".ai"
     return base / KIND_DIRS[kind]
 
 
-def _source_kind_dir(kind: str, source_root: Path, source: str) -> Path:
-    """Where a kind's items are read from, inside a resolved source.
+def _source_kind_dirs(kind: str, source_root: Path, source: str,
+                      entry: dict | None = None) -> list:
+    """Every directory a kind's items are read from, inside a resolved source.
 
     The template keeps everything under `.ai/`. An external source may use the
     same layout (a local checkout following this template) or the flat upstream
     layout (`skills/`, `agents/`, `instructions/` …), so prefer `.ai/` when it
     is actually there.
+
+    Some upstream repositories do not keep a kind at one root: MAUI Labs ships
+    its skills under `plugins/<plugin>/skills`. Such a source declares
+    `paths: { "skill": [...] }` in the manifest, and every listed directory is
+    read. Paths are relative to the resolved source root.
     """
+    configured = (entry or {}).get("paths")
+    if isinstance(configured, dict):
+        key = kind if kind in configured else KIND_DIRS[kind]
+        if kind in configured or KIND_DIRS[kind] in configured:
+            raw = configured.get(key)
+            parts = [raw] if isinstance(raw, str) else list(raw or [])
+            return [source_root / str(part) for part in parts if str(part).strip()]
     dotted = source_root / ".ai" / KIND_DIRS[kind]
     if source == DEFAULT_SOURCE or dotted.is_dir():
-        return dotted
-    return source_root / KIND_DIRS[kind]
+        return [dotted]
+    return [source_root / KIND_DIRS[kind]]
 
 
 def _target_path(kind: str, name: str) -> Path:
@@ -284,7 +339,7 @@ def _rmdir(path: Path) -> None:
     """Remove a directory, file, symlink or junction without following links.
 
     shutil.rmtree() would follow a link and delete the *target* directory, so a
-    link is always removed as a link (mirrors sync-skills.py).
+    link is always removed as a link (mirrors sync-platforms.py).
     """
     if _is_link(path):
         if _platform_windows() and path.is_dir() and not path.is_symlink():
@@ -509,6 +564,7 @@ def default_manifest(repo: str = DEFAULT_REPO, ref: str = DEFAULT_REF) -> dict:
         "skills": [],
         "agents": [],
         "instructions": [],
+        "prompts": [],
         "plugins": [],
         "hooks": [],
         "materialize": "link",
@@ -541,7 +597,7 @@ def local_selection() -> dict:
         base = _root() / ".ai" / KIND_DIRS[kind]
         names = []
         if base.is_dir():
-            if kind in ("agent", "instruction"):
+            if kind in ("agent", "instruction", "prompt"):
                 suffix = KIND_SUFFIX[kind]
                 names = sorted(entry.name[:-len(suffix)] for entry in base.iterdir()
                                if entry.is_file() and entry.name.endswith(suffix))
@@ -549,6 +605,25 @@ def local_selection() -> dict:
                 names = sorted(entry.name for entry in base.iterdir() if entry.is_dir())
         selection[MANIFEST_KEYS[kind]] = names
     return selection
+
+
+def merge_builtin_sources(manifest: dict) -> list:
+    """Add newly offered built-in sources to an existing manifest.
+
+    Built-ins are written once by `init`/the starter manifest; without this,
+    a project created before a source was added never sees it. Only sources
+    that are missing are added — an existing pin, `enabled: false`, or a
+    project override is left exactly as it is.
+    """
+    if offline():
+        return []
+    sources = manifest.setdefault("sources", {})
+    added = []
+    for name, entry in BUILTIN_SOURCES.items():
+        if name not in sources:
+            sources[name] = dict(entry)
+            added.append(name)
+    return added
 
 
 def starter_manifest() -> dict:
@@ -587,6 +662,7 @@ def starter_manifest() -> dict:
 # platform mirrors, CI, and agents working in a terminal.
 TOOLING_FILES = (
     ".ai/scripts/catalog.py",
+    ".ai/scripts/sync-platforms.py",
     ".ai/scripts/sync-skills.py",
     ".ai/scripts/sync-agents.py",
     ".ai/scripts/upgrade-template.py",
@@ -787,7 +863,7 @@ def install_tooling(source_root: Path, overwrite: bool = False, ref: str | None 
 
     The extension runs its own bundled copy, but a repository that installs
     anything should be able to run the catalog itself — that is what lets
-    `.ai/scripts/sync-skills.py` create the `.github`/`.claude`/`.reasonix`
+    `.ai/scripts/sync-platforms.py` create the `.github`/`.claude`/`.reasonix`
     mirrors. A file the template no longer ships falls back to the extension's
     bundled copy, so a missing resolver is still created.
 
@@ -868,6 +944,10 @@ GITIGNORE_ENTRIES = (
     ".claude/agents/",
     ".github/skills/",
     ".github/agents/",
+    ".github/instructions/",
+    ".github/prompts/",
+    ".claude/commands/",
+    ".claude/instructions/",
     ".reasonix/skills/",
     ".reasonix/agents/",
 )
@@ -908,7 +988,10 @@ def sync_platform_mirrors() -> None:
 
     Delegated rather than duplicated: the junction rules live in one script.
     """
-    script = _root() / ".ai" / "scripts" / "sync-skills.py"
+    script = _root() / ".ai" / "scripts" / "sync-platforms.py"
+    if not script.is_file():
+        # A project that predates the rename.
+        script = _root() / ".ai" / "scripts" / "sync-skills.py"
     if script.is_file():
         subprocess.run([sys.executable, str(script)], cwd=str(_root()),
                        capture_output=True, text=True, errors="replace")
@@ -953,13 +1036,23 @@ def _source_repo(manifest: dict) -> str:
 
 
 def _sources(manifest: dict) -> list:
-    """[(name, entry)] for every declared source, the template source first."""
+    """[(name, entry)] for every declared source, the template source first.
+
+    Built-in third-party sources are ordered by their declaration in
+    `BUILTIN_SOURCES`, not by their position in the manifest. Two sources can
+    offer the same name (`aspire` exists in both `aspire-skills` and
+    `awesome-copilot`), and the earlier source keeps it; that decision must not
+    depend on the order a manifest happened to be written in. Sources the user
+    added themselves keep their manifest order after the built-ins.
+    """
     sources = (manifest or {}).get("sources") or {}
     if not isinstance(sources, dict) or not sources:
         return [(DEFAULT_SOURCE, {})]
+    builtin_order = {name: index for index, name in enumerate(BUILTIN_SOURCES)}
     ordered = []
     if DEFAULT_SOURCE in sources:
         ordered.append((DEFAULT_SOURCE, sources[DEFAULT_SOURCE] or {}))
+    declared = []
     for name, entry in sources.items():
         if name == DEFAULT_SOURCE:
             continue
@@ -968,8 +1061,9 @@ def _sources(manifest: dict) -> list:
         # without reading or fetching it.
         if entry.get("enabled") is False:
             continue
-        ordered.append((name, entry))
-    return ordered
+        declared.append((name, entry))
+    declared.sort(key=lambda pair: (builtin_order.get(pair[0], len(builtin_order)),))
+    return ordered + declared
 
 
 def _source_entry_named(manifest: dict, name: str) -> dict:
@@ -978,6 +1072,23 @@ def _source_entry_named(manifest: dict, name: str) -> dict:
 
 def catalog_cache_dir() -> Path:
     return _root() / ".ai" / "tmp" / "catalog-cache"
+
+
+def source_cache_dir(repo: str, ref: str) -> Path:
+    """Where a remote source's checkout lives, keyed by repository and ref.
+
+    Two source ids can point at the same repository: MAUI Labs offers its two
+    plugins as `dotnet-maui` and `dotnet-maui-tooling`. Keying the cache by
+    source name would clone that repository twice, so the repository and ref
+    are the identity here and both sources share one checkout.
+
+    The readable part is the repository's last path segment; a short digest of
+    the full repository URL keeps two different checkouts apart and keeps a
+    local `file://` fixture from turning into a path too long for Windows.
+    """
+    slug = str(repo).rstrip("/").rsplit("/", 1)[-1] or "source"
+    digest = hashlib.sha256(f"{repo}@{ref}".encode("utf-8")).hexdigest()[:8]
+    return catalog_cache_dir() / f"{_slug(slug)}-{_slug(ref)}-{digest}"
 
 
 def _hook_install_gate(manifest: dict, selected: list, index_by_key: dict) -> None:
@@ -1046,7 +1157,7 @@ def fetch_source(name: str, entry: dict, refresh: bool = False) -> Path:
         _die(f"source '{name}' must pin a ref (tag, branch or commit SHA); "
              f"'{DEFAULT_REF}' is reserved for the template source")
 
-    target = catalog_cache_dir() / f"{name}-{ref}"
+    target = source_cache_dir(repo, ref)
     if target.exists() and refresh:
         _force_rmtree(target)
     if target.is_dir() and any(target.iterdir()):
@@ -1280,14 +1391,13 @@ def build_index(manifest: dict | None = None, refresh: bool = False) -> dict:
         repo = str(source_meta.get("repo") or DEFAULT_REPO)
         license_name = str(source_meta.get("license") or LICENSE)
         for kind in KINDS:
-            base = _source_kind_dir(kind, source_root, source_name)
-            if not base.is_dir():
-                continue
-            for entry in sorted(base.iterdir(), key=lambda item: item.name):
+            entries = []
+            for base in _source_kind_dirs(kind, source_root, source_name, source_meta):
+                if base.is_dir():
+                    entries.extend(sorted(base.iterdir(), key=lambda item: item.name))
+            for entry in entries:
                 if entry.name.startswith(".") or entry.name == "__pycache__":
                     continue
-                rel_base = f".ai/{KIND_DIRS[kind]}" if source_name == DEFAULT_SOURCE \
-                    else KIND_DIRS[kind]
                 if kind == "skill":
                     if not entry.is_dir():
                         continue
@@ -1298,16 +1408,35 @@ def build_index(manifest: dict | None = None, refresh: bool = False) -> dict:
                 elif kind == "agent":
                     if not entry.is_file() or not entry.name.endswith(".md"):
                         continue
-                    if entry.name.endswith(".instructions.md"):
+                    if entry.name.endswith((".instructions.md", ".prompt.md")):
                         continue
                     name = entry.name[:-3]
                     if name.endswith(".agent"):
                         name = name[: -len(".agent")]
                     document = entry
                 elif kind == "instruction":
-                    if not entry.is_file() or not entry.name.endswith(".instructions.md"):
+                    if not entry.is_file() or not entry.name.endswith(".md"):
                         continue
-                    name = entry.name[: -len(".instructions.md")]
+                    if entry.name.endswith((".agent.md", ".prompt.md")):
+                        continue
+                    if entry.name.lower() == "readme.md":
+                        continue
+                    if entry.name.endswith(".instructions.md"):
+                        name = entry.name[: -len(".instructions.md")]
+                    else:
+                        name = entry.name[:-3]
+                    document = entry
+                elif kind == "prompt":
+                    if not entry.is_file() or not entry.name.endswith(".md"):
+                        continue
+                    if entry.name.endswith((".instructions.md", ".agent.md")):
+                        continue
+                    if entry.name.lower() == "readme.md":
+                        continue
+                    if entry.name.endswith(".prompt.md"):
+                        name = entry.name[: -len(".prompt.md")]
+                    else:
+                        name = entry.name[:-3]
                     document = entry
                 elif kind == "plugin":
                     if not entry.is_dir():
@@ -1323,11 +1452,13 @@ def build_index(manifest: dict | None = None, refresh: bool = False) -> dict:
                     if not document.is_file():
                         continue
                     name = entry.name
-                source_rel = (f"{rel_base}/{entry.name}" if entry.is_file()
-                              else f"{rel_base}/{name}")
                 # `path` is where the item is *installed* (always under .ai/);
                 # `sourcePath` is where it is read from inside its source. They
                 # coincide for the template and differ for an upstream catalog.
+                try:
+                    source_rel = entry.relative_to(source_root).as_posix()
+                except ValueError:
+                    source_rel = entry.name
                 rel = f".ai/{KIND_DIRS[kind]}/{name}{KIND_SUFFIX[kind]}"
 
                 raw = document.read_text(encoding="utf-8", errors="replace")
@@ -1375,7 +1506,7 @@ def build_index(manifest: dict | None = None, refresh: bool = False) -> dict:
                     "sha256": sha,
                     "files": count,
                     "license": license_name,
-                    "upstream": f"https://github.com/{repo}/tree/{ref}/{rel}",
+                    "upstream": f"https://github.com/{repo}/tree/{ref}/{source_rel}",
                     "_declared_requires": declared,
                 })
 
@@ -1502,6 +1633,10 @@ def _preset_selection(manifest: dict, index_by_key: dict, strict: bool = True) -
     name = manifest.get("preset")
     if not name:
         return {}
+
+    # The preset used to be called `full`. Keep existing manifests working
+    # after the rename to `Everything`.
+    name = {"full": "Everything"}.get(str(name), name)
 
     presets = (_load_presets() or {}).get("presets") or {}
     if name not in presets:
@@ -1695,7 +1830,7 @@ def remove_markers(kind: str, item_id: str) -> list:
 def create_link(target: Path, source: Path) -> bool:
     """Per-item junction (Windows) or relative symlink (POSIX).
 
-    Mirrors sync-skills.py: `mklink /J` needs no administrator rights for
+    Mirrors sync-platforms.py: `mklink /J` needs no administrator rights for
     directories. A single-file item (agents) uses a hardlink first, then a
     symlink, then a copy, because a junction cannot point at a file.
     """
@@ -2450,7 +2585,7 @@ def cmd_init(args) -> int:
     if manifest_path.is_file() and not args.force:
         _die(f"{manifest_path.name} already exists — use --force to replace it")
 
-    preset = "full" if args.all else args.preset
+    preset = "Everything" if args.all else args.preset
     if not preset and not (args.ids or args.agents):
         _die("init needs --preset <name>, --all, or explicit ids")
 
@@ -3301,13 +3436,26 @@ def cmd_bootstrap(args) -> int:
     """
     existing = load_manifest()
     manifest = existing or starter_manifest()
+    added_sources = []
     if existing is None:
         save_manifest(manifest)
+    else:
+        # A project that predates a built-in source never sees it otherwise:
+        # browse only reads the sources its manifest declares.
+        added_sources = merge_builtin_sources(manifest)
+        if added_sources:
+            save_manifest(manifest)
 
     migrate_catalog_dir()
     manifest = load_manifest() or manifest
     source_root = _source_root(manifest)
-    tooling = install_tooling(source_root, overwrite=False, ref=_source_ref(manifest))
+    # Setup brings an existing project up to the files its pin (or the
+    # extension bundle, for files the template no longer ships) provides.
+    # A file the project edited no longer matches its recorded hash and is
+    # protected by install_tooling; only untouched files are refreshed. This is
+    # what makes a new preset or category appear without asking the user to
+    # re-run anything.
+    tooling = install_tooling(source_root, overwrite=True, ref=_source_ref(manifest))
     scaffold = install_scaffold(source_root)
     gitignore = ensure_gitignore()
     readme = ensure_readme()
@@ -3325,6 +3473,7 @@ def cmd_bootstrap(args) -> int:
             "created": existing is None,
             "path": str(_manifest_path()),
             "selected": selected,
+            "sourcesAdded": added_sources,
             "tooling": tooling,
             "scaffold": scaffold,
             "gitignore": gitignore,
@@ -3333,6 +3482,8 @@ def cmd_bootstrap(args) -> int:
         }))
     else:
         print(f"wrote: {_manifest_path()} ({selected} selected item(s))")
+        if added_sources:
+            print(f"sources: added {', '.join(added_sources)}")
         print(f"tooling: {len(tooling['copied'])} copied, "
               f"{len(tooling['missing'])} missing")
         print(f"scaffold: {len(scaffold['copied'])} copied, "
@@ -3413,14 +3564,28 @@ def cmd_sync(args) -> int:
             actions.append(_action("update" if needs else "ok", kind, item_id, item["path"]))
 
     selected_keys = set(selected)
-    pending_prune = [
-        entry for key, entry in locked.items() if key not in selected_keys
-    ]
+    known_kinds = set(KINDS)
+    pending_prune = []
+    # A lock written by a newer resolver may contain a kind this one does not
+    # know (the prompt kind, for example, when an older client opens a project
+    # that selected prompts). Never treat an unknown kind as deselected: pruning
+    # it would delete files this client cannot reason about. Keep the entry in
+    # the lock untouched so a later client still owns it.
+    preserved_unknown = []
+    for key, entry in locked.items():
+        if key in selected_keys:
+            continue
+        kind = entry.get("kind") or "skill"
+        if kind in known_kinds:
+            pending_prune.append(entry)
+        else:
+            preserved_unknown.append(entry)
     pending_prune.sort(key=_lock_sort_key)
 
     if not args.prune:
         # Keep the lock entries so a later --prune can still find the paths.
         entries.extend(pending_prune)
+    entries.extend(preserved_unknown)
 
     new_lock = {"lockVersion": 1, "resolved": entries}
     # With source == target the installed content *is* the source, so the lock
@@ -3439,6 +3604,7 @@ def cmd_sync(args) -> int:
             "sameDir": same_dir,
             "actions": actions,
             "pendingPrune": [entry.get("path") for entry in pending_prune],
+            "preservedUnknown": [entry.get("id") for entry in preserved_unknown],
             "lockChanged": lock_changed,
         }
         if args.json:
@@ -3514,6 +3680,7 @@ def cmd_sync(args) -> int:
             "actions": actions,
             "performed": performed,
             "pendingPrune": [entry.get("path") for entry in pending_prune],
+            "preservedUnknown": [entry.get("id") for entry in preserved_unknown],
             "pruned": bool(args.prune),
             "lockChanged": lock_changed,
             "conflicts": conflicts,
@@ -3526,6 +3693,9 @@ def cmd_sync(args) -> int:
     if pending_prune and not args.prune:
         print(f"{prefix}{len(pending_prune)} item(s) pending prune "
               f"(run 'catalog.py sync --prune')")
+    if preserved_unknown:
+        print(f"{prefix}{len(preserved_unknown)} lock entry/entries of an unknown "
+              f"kind preserved (not pruned)")
     if args.dry_run:
         print(f"{prefix}{touched} item(s) would change; nothing written")
     else:
@@ -3657,7 +3827,7 @@ def build_parser() -> argparse.ArgumentParser:
         "init", help="Create .ai/ai.json for a new project and sync it")
     init_parser.add_argument("--preset", default=None, help="Preset name to start from")
     init_parser.add_argument("--all", action="store_true",
-                             help="Install everything the catalog offers (preset: full)")
+                             help="Install everything the catalog offers (preset: Everything)")
     init_parser.add_argument("--ids", nargs="*", default=None, help="Explicit skill ids")
     init_parser.add_argument("--agents", nargs="*", default=None, help="Explicit agent ids")
     init_parser.add_argument("--repo", default=None, help="Source repository (owner/name)")

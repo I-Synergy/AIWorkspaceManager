@@ -253,7 +253,7 @@ test("releaseNotice reports newer and unpinned releases honestly", () => {
     release({ pinnedTag: false, current: null, ref: "local", newer: false })
   );
   assert.equal(unpinned.kind, "unpinned");
-  assert.match(unpinned.label, /Template release v1\.7\.0 is published/);
+  assert.match(unpinned.label, /I-Synergy release v1\.7\.0 is published/);
   assert.match(unpinned.detail, /own tree/);
 });
 
