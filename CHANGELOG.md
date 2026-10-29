@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.12.0 (2026-10-29)
+
 - `microsoft/aspire-skills` is now a built-in source (`aspire-skills`) with its seven official Aspire skills and a new `Aspire` preset. It is indexed before `awesome-copilot` because both ship an `aspire` skill; the official one keeps the name.
 - Existing projects pick up newly offered built-in sources automatically: `bootstrap` (run on activation) adds any missing source entry to `.ai/ai.json` without touching the selection. Built-in source priority now follows the resolver's declaration order, not the order a manifest happened to be written in.
 - The `template` bucket is labelled **I-Synergy** instead of "Template".
