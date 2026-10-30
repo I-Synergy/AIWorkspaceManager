@@ -1,7 +1,1 @@
-- **Security hardening from the SonarCloud gate.** CI installs with `npm ci --ignore-scripts` and `npx --yes --ignore-scripts`, Python test dependencies are pinned with SHA-256 hashes (`--require-hashes`), and the GitHub release action is pinned to a full commit SHA.
-- `scripts/install-tooling.mjs` validates every destination against the target repository root, and `tools/dev-server.mjs` rejects path traversal outside `dist/`, `fixtures/` and `tools/`.
-- `tools/release.mjs` no longer shells out to `npm`; it updates `package.json` and `package-lock.json` in-process with `execFileSync` and no shell, removing the command-injection surface.
-- The webview RPC client accepts responses only from the embedding host: it checks both `event.source` and `event.origin`.
-- Cleared the remaining maintainability findings: nested ternaries, duplicate imports, unused `async`, non-readonly Lit statics, redundant `void` and `String.fromCharCode`.
-- Shared the resolver test loader/CLI/fixtures in `conftest.py` and `resolver_helpers.py`, removing all duplicated test blocks (SonarCloud duplication 1.5% → 0%).
-- SonarCloud result: **79 open issues → 0**, **17 vulnerabilities → 0**, **0 duplicated lines**.
+- README now shows the project status at a glance: CI, GitHub release, VS Marketplace version/installs/downloads/rating, SonarCloud security, maintainability, reliability and duplication ratings, and the MIT licence.
