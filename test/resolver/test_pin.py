@@ -4,47 +4,23 @@ The command only edits the manifest; replacing the tree is `update --apply`,
 which treats an existing-but-unlocked target as "not installed" and rewrites it.
 """
 
-import importlib.util
 import json
-import subprocess
-import sys
 from pathlib import Path
 
-import pytest
+from resolver_helpers import (
+    git, load_catalog, read_manifest, run as run_catalog,
+    run_json as run_catalog_json, write_skill,
+)
 
-SCRIPT = Path(__file__).resolve().parents[2] / "tooling" / ".ai" / "scripts" / "catalog.py"
-
-sys.dont_write_bytecode = True
-
-
-def _load_catalog():
-    spec = importlib.util.spec_from_file_location("catalog_pin", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+catalog = load_catalog("catalog_pin")
 
 
-catalog = _load_catalog()
+def run(*argv):
+    return run_catalog(catalog, *argv)
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-
-def git(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=t@example.com", *args],
-        capture_output=True, text=True, check=True,
-    )
-    return result.stdout.strip()
-
-
-def write_skill(root: Path, name: str, description: str) -> Path:
-    skill = Path(root) / ".ai" / "skills" / name
-    skill.mkdir(parents=True, exist_ok=True)
-    (skill / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: {description}\n---\n\n{description}\n",
-        encoding="utf-8")
-    return skill
+def run_json(capsys, *argv):
+    return run_catalog_json(catalog, capsys, *argv)
 
 
 def make_release_repo(tmp_path: Path, tag: str, description: str) -> Path:
@@ -56,37 +32,6 @@ def make_release_repo(tmp_path: Path, tag: str, description: str) -> Path:
     git(source, "commit", "-q", "-m", tag)
     git(source, "tag", tag)
     return source
-
-
-def run(*argv):
-    args = catalog.build_parser().parse_args([str(value) for value in argv])
-    try:
-        return args.handler(args)
-    except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 1
-
-
-def run_json(capsys, *argv):
-    capsys.readouterr()
-    assert run(*argv) == 0
-    return json.loads(capsys.readouterr().out)
-
-
-@pytest.fixture(autouse=True)
-def no_network(monkeypatch):
-    monkeypatch.setenv("CATALOG_OFFLINE", "1")
-
-
-@pytest.fixture
-def project(tmp_path, monkeypatch):
-    root = tmp_path / "proj"
-    root.mkdir()
-    monkeypatch.setenv("CATALOG_ROOT", str(root))
-    return root
-
-
-def read_manifest(root: Path) -> dict:
-    return json.loads((root / ".ai" / "ai.json").read_text(encoding="utf-8"))
 
 
 # ─── pin ────────────────────────────────────────────────────────────────────

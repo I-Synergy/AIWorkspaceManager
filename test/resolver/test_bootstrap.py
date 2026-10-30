@@ -5,52 +5,24 @@ read-only commands resolve against an implicit starter manifest (the template
 source, fetched remotely) and write nothing. The first selection persists it.
 """
 
-import importlib.util
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[2] / "tooling" / ".ai" / "scripts" / "catalog.py"
+from resolver_helpers import (
+    load_catalog, make_source, run as run_catalog, run_json as run_catalog_json,
+)
 
-# Importing the resolver would otherwise drop a __pycache__ into the snapshot
-# that the VSIX ships.
-sys.dont_write_bytecode = True
-
-
-def _load_catalog():
-    spec = importlib.util.spec_from_file_location("catalog_bootstrap", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+catalog = load_catalog("catalog_bootstrap")
 
 
-catalog = _load_catalog()
+def run(*argv):
+    return run_catalog(catalog, *argv)
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-
-def git(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=t@example.com", *args],
-        capture_output=True, text=True, check=True,
-    )
-    return result.stdout.strip()
-
-
-def make_source(tmp_path: Path) -> Path:
-    source = tmp_path / "src"
-    skill = source / ".ai" / "skills" / "alpha"
-    skill.mkdir(parents=True)
-    (skill / "SKILL.md").write_text(
-        "---\nname: alpha\ndescription: alpha skill\n---\n", encoding="utf-8")
-    git(source, "init", "-q", "-b", "main")
-    git(source, "add", "-A")
-    git(source, "commit", "-q", "-m", "v1")
-    return source
+def run_json(capsys, *argv):
+    return run_catalog_json(catalog, capsys, *argv)
 
 
 def starter_for(source: Path) -> dict:
@@ -67,35 +39,6 @@ def starter_for(source: Path) -> dict:
         "materialize": "copy",
         "exclude": [],
     }
-
-
-def run(*argv):
-    args = catalog.build_parser().parse_args([str(value) for value in argv])
-    try:
-        return args.handler(args)
-    except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 1
-
-
-def run_json(capsys, *argv):
-    capsys.readouterr()
-    assert run(*argv) == 0
-    return json.loads(capsys.readouterr().out)
-
-
-@pytest.fixture(autouse=True)
-def no_network(monkeypatch):
-    # http(s) is refused; the file:// fixtures below stay usable.
-    monkeypatch.setenv("CATALOG_OFFLINE", "1")
-
-
-@pytest.fixture
-def bare_project(tmp_path, monkeypatch):
-    """A workspace with no `.ai/` at all — the reported failure case."""
-    root = tmp_path / "proj"
-    root.mkdir()
-    monkeypatch.setenv("CATALOG_ROOT", str(root))
-    return root
 
 
 @pytest.fixture

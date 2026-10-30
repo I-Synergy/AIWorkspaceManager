@@ -6,35 +6,24 @@ ordinary sync writes missing files only; an explicit update-to-release refreshes
 them so the repository's CLI matches its pin.
 """
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
-import pytest
+from resolver_helpers import (
+    load_catalog, run as run_catalog, run_json as run_catalog_json, write,
+)
 
-SCRIPT = Path(__file__).resolve().parents[2] / "tooling" / ".ai" / "scripts" / "catalog.py"
-
-sys.dont_write_bytecode = True
-
-
-def _load_catalog():
-    spec = importlib.util.spec_from_file_location("catalog_tooling", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-catalog = _load_catalog()
+catalog = load_catalog("catalog_tooling")
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def write(path: Path, text: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    return path
+def run(*argv):
+    return run_catalog(catalog, *argv)
+
+
+def run_json(capsys, *argv):
+    return run_catalog_json(catalog, capsys, *argv)
 
 
 def make_template(tmp_path: Path) -> Path:
@@ -85,33 +74,6 @@ def select_skills(root: Path, *skills: str) -> None:
     manifest = json.loads(path.read_text(encoding="utf-8"))
     manifest["skills"] = list(skills)
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-
-
-def run(*argv):
-    args = catalog.build_parser().parse_args([str(value) for value in argv])
-    try:
-        return args.handler(args)
-    except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 1
-
-
-def run_json(capsys, *argv):
-    capsys.readouterr()
-    assert run(*argv) == 0
-    return json.loads(capsys.readouterr().out)
-
-
-@pytest.fixture(autouse=True)
-def no_network(monkeypatch):
-    monkeypatch.setenv("CATALOG_OFFLINE", "1")
-
-
-@pytest.fixture
-def project(tmp_path, monkeypatch):
-    root = tmp_path / "proj"
-    root.mkdir()
-    monkeypatch.setenv("CATALOG_ROOT", str(root))
-    return root
 
 
 # ─── Sync installs missing tooling ──────────────────────────────────────────

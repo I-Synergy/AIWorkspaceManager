@@ -1,66 +1,21 @@
 """Item locks: a user-frozen item is never overwritten by update or sync."""
 
-import importlib.util
 import json
-import sys
-from pathlib import Path
 
-import pytest
+from resolver_helpers import (
+    load_catalog, read_manifest, run as run_catalog,
+    run_json as run_catalog_json, write_skill,
+)
 
-SCRIPT = Path(__file__).resolve().parents[2] / "tooling" / ".ai" / "scripts" / "catalog.py"
-
-sys.dont_write_bytecode = True
-
-
-def _load_catalog():
-    spec = importlib.util.spec_from_file_location("catalog_locks", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-catalog = _load_catalog()
-
-
-@pytest.fixture(autouse=True)
-def no_network(monkeypatch):
-    monkeypatch.setenv("CATALOG_OFFLINE", "1")
-
-
-@pytest.fixture
-def project(tmp_path, monkeypatch):
-    root = tmp_path / "proj"
-    root.mkdir()
-    monkeypatch.setenv("CATALOG_ROOT", str(root))
-    return root
-
-
-def write_skill(root: Path, name: str, description: str) -> Path:
-    skill = root / ".ai" / "skills" / name
-    skill.mkdir(parents=True, exist_ok=True)
-    (skill / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: {description}\n---\n\n{description}\n",
-        encoding="utf-8")
-    return skill
+catalog = load_catalog("catalog_locks")
 
 
 def run(*argv):
-    args = catalog.build_parser().parse_args([str(value) for value in argv])
-    try:
-        return args.handler(args)
-    except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 1
+    return run_catalog(catalog, *argv)
 
 
 def run_json(capsys, *argv):
-    capsys.readouterr()
-    assert run(*argv) == 0
-    return json.loads(capsys.readouterr().out)
-
-
-def read_manifest(root: Path) -> dict:
-    return json.loads((root / ".ai" / "ai.json").read_text(encoding="utf-8"))
+    return run_catalog_json(catalog, capsys, *argv)
 
 
 def test_lock_and_unlock_edit_the_manifest(project, capsys):
