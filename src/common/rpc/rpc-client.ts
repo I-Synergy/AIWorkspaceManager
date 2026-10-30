@@ -18,8 +18,12 @@ export function createRpcClient(
   const pending = new Map<number, PendingCall>();
 
   window.addEventListener("message", (event: MessageEvent) => {
-    // Only the embedding VS Code host may answer RPC calls.
-    if (event.source !== window.parent || event.origin !== window.location.origin) {
+    // Only the embedding VS Code host may answer RPC calls. VS Code relays host
+    // messages from the webview's own origin, but it also rewrites
+    // `window.parent` to point at the webview itself (see the webview preload's
+    // `window.parent = window`), so `event.source` is *not* `window.parent` and
+    // checking it here drops every response — the UI then hangs until timeout.
+    if (event.origin !== window.location.origin) {
       return;
     }
     const message = event.data as RpcResponse;
@@ -41,6 +45,9 @@ export function createRpcClient(
       const timer = setTimeout(() => {
         pending.delete(id);
         postMessage({ type: "rpc-cancel", id } satisfies RpcCancel);
+        // The host log gets this through the webview-log bridge, so a silent
+        // host (a dropped response, a hung resolver) is visible in Output.
+        console.warn(`RPC call ${method} timed out after ${timeoutMs} ms`);
         resolve({ ok: false, error: `Timed out after ${timeoutMs} ms calling ${method}` });
       }, timeoutMs);
 

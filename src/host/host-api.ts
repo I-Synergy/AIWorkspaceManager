@@ -3,8 +3,8 @@ import { execFile } from "node:child_process";
 import * as nodePath from "node:path";
 import { manifestPath, parseCliJson, runCatalog, scriptPath } from "./cli";
 import type {
-  AdoptPayload, BootstrapPayload, Bootstrap, BrowsePayload, CliResult, HostAPI, PresetsPayload,
-  ProjectInfo, ReleasePayload, Result, UpdatePayload, UpgradeResult,
+  AdoptPayload, BootstrapPayload, Bootstrap, BrowsePayload, CliResult, HostAPI, LogSink,
+  PresetsPayload, ProjectInfo, ReleasePayload, Result, UpdatePayload, UpgradeResult,
 } from "../common/types";
 import { fail, ok } from "../common/types";
 
@@ -17,13 +17,17 @@ export interface HostApiContext {
   /** Resolves once the activation-time setup has finished. Calls that need the
       repository's files wait for it; `bootstrap` itself does not. */
   ready?: Promise<void>;
+  /** Output channel; every failure lands there so the UI is not the only trace. */
+  log?: LogSink;
 }
 
-async function guard<T>(work: () => Promise<T>): Promise<Result<T>> {
+async function guarded<T>(work: () => Promise<T>, log?: LogSink): Promise<Result<T>> {
   try {
     return ok(await work());
   } catch (error) {
-    return fail(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    log?.error(message);
+    return fail(message);
   }
 }
 
@@ -33,6 +37,8 @@ async function guard<T>(work: () => Promise<T>): Promise<Result<T>> {
  * either, and that is deliberate.
  */
 export function createHostAPI(context: HostApiContext): HostAPI {
+  const guard = <T>(work: () => Promise<T>): Promise<Result<T>> => guarded(work, context.log);
+
   const cli = async (args: string[], wait = true): Promise<CliResult> => {
     if (wait && context.ready) {
       await context.ready;
@@ -43,7 +49,19 @@ export function createHostAPI(context: HostApiContext): HostAPI {
     }
     // The resolver ships with the extension: nothing of it has to exist in the
     // repository being managed.
-    return runCatalog(context.pythonPath(), scriptPath(context.extensionPath), root, args);
+    const started = Date.now();
+    context.log?.debug(`catalog.py ${args.join(" ")} (cwd ${root})`);
+    const result = await runCatalog(
+      context.pythonPath(), scriptPath(context.extensionPath), root, args);
+    const elapsed = Date.now() - started;
+    if (result.code !== 0) {
+      const detail = result.stderr.trim().split(/\r?\n/)[0];
+      context.log?.warn(
+        `catalog.py ${args[0]} exited ${result.code} after ${elapsed} ms${detail ? `: ${detail}` : ""}`);
+    } else {
+      context.log?.debug(`catalog.py ${args[0]} finished in ${elapsed} ms`);
+    }
+    return result;
   };
 
   const json = async <T>(args: string[], what: string, wait = true): Promise<T> =>

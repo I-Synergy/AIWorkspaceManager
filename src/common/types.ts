@@ -282,3 +282,22 @@ export interface RpcCancel {
   type: "rpc-cancel";
   id: number;
 }
+
+/**
+ * A line the webview wants in the extension's output channel. The webview's own
+ * console is only reachable through Developer Tools, so failures there would
+ * otherwise be invisible; this bridge puts them next to the host's log.
+ */
+export interface WebviewLog {
+  type: "webview-log";
+  level: "warn" | "error";
+  message: string;
+}
+
+/** The subset of `vscode.LogOutputChannel` the host uses for diagnostics. */
+export interface LogSink {
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+  debug(message: string): void;
+}

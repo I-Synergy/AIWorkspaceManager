@@ -21,6 +21,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.getConfiguration("aiManager").get<string>("pythonPath") ?? "python";
   const workspaceRoot = (): string | undefined =>
     vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const version = String(context.extension.packageJSON.version ?? "0.0.0");
+
+  // Output → "AI Workspace Manager". `log: true` gives a timestamped channel
+  // with per-level filtering, so host and webview diagnostics are visible
+  // without opening Developer Tools.
+  const log = vscode.window.createOutputChannel("AI Workspace Manager", { log: true });
+  context.subscriptions.push(log);
+  log.info(`Activating AI Workspace Manager ${version}; workspace ${
+    workspaceRoot() ?? "(none)"}; python ${pythonPath()}.`);
 
   let markReady: () => void = () => {};
   const ready = new Promise<void>((resolve) => {
@@ -30,12 +39,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const api = createHostAPI({
     workspaceRoot,
     pythonPath,
-    extensionVersion: String(context.extension.packageJSON.version ?? "0.0.0"),
+    extensionVersion: version,
     extensionPath: context.extensionUri.fsPath,
     ready,
+    log,
   });
 
-  panel = new AiManagerPanel(context.extensionUri, api);
+  panel = new AiManagerPanel(context.extensionUri, api, log);
   context.subscriptions.push(panel);
 
   tree = new CatalogTreeProvider(api, workspaceRoot);
@@ -112,18 +122,18 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!workspaceRoot()) {
       return;
     }
+    const started = Date.now();
+    log.info(`Template setup started for ${workspaceRoot()}.`);
     const result = await api.bootstrap({});
     if (!result.ok) {
-      console.warn(`AI Workspace Manager: template setup failed: ${result.error}`);
+      log.error(`Template setup failed after ${Date.now() - started} ms: ${result.error}`);
       return;
     }
     const copied = result.value.tooling.copied.length + result.value.scaffold.copied.length;
     const cleaned = result.value.legacyRemoved?.length ?? 0;
-    if (copied > 0 || cleaned > 0 || result.value.created) {
-      const cleanup = cleaned ? `, ${cleaned} old state file(s) cleaned` : "";
-      console.log(`AI Workspace Manager: set up ${result.value.path} `
-        + `(${result.value.selected} selected, ${copied} file(s) copied${cleanup}).`);
-    }
+    log.info(`Template setup finished in ${Date.now() - started} ms: `
+      + `${result.value.path} (${result.value.selected} selected, ${copied} file(s) copied, `
+      + `${cleaned} old state file(s) cleaned, created=${result.value.created}).`);
   };
 
   const runItemAction = async (

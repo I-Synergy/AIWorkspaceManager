@@ -4,6 +4,8 @@
 
 - **Releases use the same automatic versioning as the AI repository.** A push to `main` derives a UTC build number (`YYYY.1MMdd.1HHmm`) and the matching `VersionInformational`/`VersionPackage` values (`-preview` on pull requests), uses `VersionPackage` as the extension version, publishes to the Marketplace, tags the build number and creates a GitHub Release with generated notes. Version-bump commits, the `Release` workflow and `tools/release.mjs` are gone; pull requests build and test without publishing.
 - The README publishing section documents the automatic flow, and `RELEASE_NOTES.md` is no longer required.
+- **Fixed the webview hanging on "Reading the catalog…".** The RPC client dropped every host response because it compared `event.source` with `window.parent`, and the VS Code webview preload rewrites `window.parent` to point at the webview itself. Responses are now accepted from the webview's own origin only; the UI no longer waits out the 10-minute RPC timeout.
+- **Diagnostics now show up in VS Code.** A timestamped **AI Workspace Manager** output channel records activation, template setup, every `catalog.py` invocation with its duration and exit status, RPC failures, and webview warnings/errors (console and uncaught exceptions) forwarded from the panel. A timed-out RPC call is logged too, instead of only surfacing after ten minutes in the webview.
 
 ## 0.13.2 (2026-10-30)
 
