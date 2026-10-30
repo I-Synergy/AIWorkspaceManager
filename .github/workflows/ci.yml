@@ -2,7 +2,22 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Build number (YYYY.1MMdd.1HHmm). Leave empty to use the current UTC time."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -10,19 +25,44 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    outputs:
+      build_number: ${{ steps.build.outputs.build_number }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: lts/*
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
+
+      - name: Resolve build number
+        id: build
+        shell: bash
+        env:
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          build_number="$INPUT_BUILD_NUMBER"
+          if [ -z "$build_number" ]; then
+            build_number="$(date -u +'%Y.1%m%d.1%H%M')"
+          fi
+          if ! [[ "$build_number" =~ ^[0-9]{4}\.1[0-9]{4}\.1[0-9]{4}$ ]]; then
+            echo "::error::Invalid build number '$build_number'. Expected YYYY.1MMdd.1HHmm."
+            exit 1
+          fi
+          echo "Build number: $build_number"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+
+      # The committed version is a development baseline. Every CI build packages
+      # the derived build number, so releases never require a version-bump commit.
+      - name: Set package version
+        run: npm version "${{ steps.build.outputs.build_number }}" --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -51,71 +91,74 @@ jobs:
             echo "::error::VSIX exceeds 2 MB"
             exit 1
           fi
+          cp releases/aiworkspacemanager-*.vsix aiworkspacemanager.vsix
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: vsix
+          path: aiworkspacemanager.vsix
+          if-no-files-found: error
 
   publish:
-    name: Publish to Marketplace
+    name: Publish release
     needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      BUILD_NUMBER: ${{ needs.build.outputs.build_number }}
     permissions:
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout (full history and tags)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: lts/*
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Download VSIX
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: vsix
+          path: .
 
-      - name: Build
-        run: npm run vscode:prepublish
-
-      - name: Check release version
-        id: release_gate
+      - name: Skip when the tag already exists
+        id: gate
+        shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+          if git ls-remote --exit-code --tags origin "refs/tags/${BUILD_NUMBER}" >/dev/null 2>&1; then
+            echo "::notice::Tag ${BUILD_NUMBER} already exists; skipping release."
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish to VS Code Marketplace
-        if: steps.release_gate.outputs.publish == 'true'
-        run: npx --yes --ignore-scripts @vscode/vsce publish --no-dependencies
+        if: steps.gate.outputs.publish == 'true'
+        run: npx --yes --ignore-scripts @vscode/vsce publish --packagePath aiworkspacemanager.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
-      - name: Read version
-        id: version
-        run: echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
-
       - name: Tag release
-        if: steps.release_gate.outputs.publish == 'true'
+        if: steps.gate.outputs.publish == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }}
-
-      - name: Package .vsix
-        if: steps.release_gate.outputs.publish == 'true'
-        run: npx --yes --ignore-scripts @vscode/vsce package --no-dependencies --out aiworkspacemanager.vsix
+          git tag -a "$BUILD_NUMBER" -m "Release $BUILD_NUMBER"
+          git push origin "$BUILD_NUMBER"
 
       - name: Create GitHub Release
-        if: steps.release_gate.outputs.publish == 'true'
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          files: aiworkspacemanager.vsix
-          body_path: RELEASE_NOTES.md
-          generate_release_notes: false
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$BUILD_NUMBER" aiworkspacemanager.vsix \
+            --title "$BUILD_NUMBER" \
+            --generate-notes \
+            --verify-tag

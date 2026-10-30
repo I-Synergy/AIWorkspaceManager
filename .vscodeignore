@@ -17,7 +17,6 @@ esbuild.js
 .vscodeignore
 package-lock.json
 requirements-dev.txt
-RELEASE_NOTES.md
 images/social-preview.png
 
 # Workspace, test and agent noise that must never ship

@@ -273,21 +273,23 @@ the VSIX stays under 2 MB so a leaked `node_modules` cannot slip through.
 
 ## Publishing
 
-The Marketplace release uses the same flow as NuGet Package Manager: a push of a
-new version to the default branch publishes it, tags `v<version>` and creates a
-GitHub Release with the `.vsix`.
+Releases are automatic. Every push to `main` gets a version from its UTC build
+number, so there is no version bump, changelog commit or release branch:
 
-1. Add the `VSCE_PAT` repository secret (Marketplace → **Manage** scope for the
-   `I-Synergy` publisher).
-2. Run **Actions → Release → Run workflow** and pick `patch`, `minor` or `major`.
-   `tools/release.mjs` bumps `package.json` and `package-lock.json`, moves the
-   `CHANGELOG.md` entries under Unreleased into the new version, writes
-   `RELEASE_NOTES.md`, then commits and pushes.
-3. CI builds and tests; the publish job publishes `I-Synergy.aiworkspacemanager`, tags
-   the commit and attaches `aiworkspacemanager.vsix` to the GitHub Release.
+1. CI derives `YYYY.1MMdd.1HHmm` (for example `2026.11030.11435`).
+2. It writes that version into `package.json`, builds and tests the extension,
+   and packages the `.vsix`.
+3. The publish job publishes `I-Synergy.aiworkspacemanager`, tags the build
+   number (without a `v` prefix) and creates a GitHub Release with generated
+   notes and the `.vsix`.
 
-Publishing is skipped when the version's `v<version>` tag already exists, so a
-normal push does not republish an already-released version.
+Pull requests run the same build and tests but never publish. To publish a
+specific build manually, run **Actions → CI → Run workflow** and optionally enter
+a build number. An existing tag is reported and skipped, so re-running a
+workflow does not republish a version.
+
+Add the `VSCE_PAT` repository secret (Marketplace → **Manage** scope for the
+`I-Synergy` publisher) once; no other release setup is required.
 
 ## Tooling snapshot
 

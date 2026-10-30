@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Releases are versioned automatically.** A push to `main` derives a UTC build number (`YYYY.1MMdd.1HHmm`), uses it as the extension version, publishes to the Marketplace, tags the build number and creates a GitHub Release with generated notes. Version-bump commits, the `Release` workflow and `tools/release.mjs` are gone; pull requests build and test without publishing.
+- The README publishing section documents the automatic flow, and `RELEASE_NOTES.md` is no longer required.
+
 ## 0.13.2 (2026-10-30)
 
 - README now shows the project status at a glance: CI, GitHub release, VS Marketplace version/installs/downloads/rating, SonarCloud security, maintainability, reliability and duplication ratings, and the MIT licence.

@@ -162,7 +162,6 @@
     "test": "tsc -p tsconfig.test.json && node --test test/logic.test.js",
     "test:resolver": "python -m pytest test/resolver -q",
     "package": "npm run build && npx --yes --ignore-scripts @vscode/vsce package --no-dependencies --out releases/",
-    "release": "node tools/release.mjs",
     "sync-tooling": "node scripts/sync-tooling.mjs"
   },
   "devDependencies": {

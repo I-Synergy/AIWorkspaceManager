@@ -1,1 +1,0 @@
-- README now shows the project status at a glance: CI, GitHub release, VS Marketplace version/installs/downloads/rating, SonarCloud security, maintainability, reliability and duplication ratings, and the MIT licence.
