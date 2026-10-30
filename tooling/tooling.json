@@ -30,7 +30,7 @@
     },
     {
       "path": ".ai/tests/validate-release.py",
-      "bytes": 12642
+      "bytes": 12269
     },
     {
       "path": "catalog/presets.json",
