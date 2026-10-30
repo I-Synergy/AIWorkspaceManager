@@ -8,10 +8,12 @@
 [![Downloads](https://vsmarketplacebadges.dev/downloads-short/I-Synergy.aiworkspacemanager.svg)](https://marketplace.visualstudio.com/items?itemName=I-Synergy.aiworkspacemanager)
 [![Rating](https://vsmarketplacebadges.dev/rating-short/I-Synergy.aiworkspacemanager.svg)](https://marketplace.visualstudio.com/items?itemName=I-Synergy.aiworkspacemanager)
 
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=I-Synergy_AIManager)
-[![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=I-Synergy_AIManager)
-[![Reliability](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=I-Synergy_AIManager)
-[![Duplication](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=I-Synergy_AIManager)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=alert_status)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=bugs)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=code_smells)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=vulnerabilities)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=security_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=sqale_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
