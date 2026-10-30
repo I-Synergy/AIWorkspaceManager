@@ -24,7 +24,8 @@ export class AiManagerPanel implements vscode.Disposable {
 
   show(tab?: PanelTab): void {
     this.requestedTab = tab;
-    this.log.debug(`Show panel${tab ? ` on ${tab}` : ""}.`);
+    const where = tab ? ` on ${tab}` : "";
+    this.log.debug(`Show panel${where}.`);
     if (this.panel) {
       this.panel.reveal(undefined, false);
       // The webview is already loaded: nudge it to the requested view.
