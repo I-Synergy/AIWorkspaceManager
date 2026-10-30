@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.13.2 (2026-10-30)
+
+- README now shows the project status at a glance: CI, GitHub release, VS Marketplace version/installs/downloads/rating, SonarCloud security, maintainability, reliability and duplication ratings, and the MIT licence.
+
 ## 0.13.1 (2026-10-30)
 
 - **Security hardening from the SonarCloud gate.** CI installs with `npm ci --ignore-scripts` and `npx --yes --ignore-scripts`, Python test dependencies are pinned with SHA-256 hashes (`--require-hashes`), and the GitHub release action is pinned to a full commit SHA.
