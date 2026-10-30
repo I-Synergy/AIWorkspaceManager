@@ -52,7 +52,7 @@ export class PresetsView extends LitElement {
         gap: 8px;
         background: var(--vscode-editorWidget-background, transparent);
       }
-      .card.current {
+      .card.applied {
         border-color: var(--vscode-focusBorder);
         box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
       }
@@ -93,29 +93,35 @@ export class PresetsView extends LitElement {
     // moves, because it is the escape hatch rather than a starting point.
     const presets = [...(store.presets?.presets ?? store.browse?.presets ?? [])]
       .sort((a, b) => Number(a.name === "Everything") - Number(b.name === "Everything"));
-    const current = store.presets?.current ?? null;
+    const active = new Set(
+      store.presets?.active
+        ?? (store.presets?.current ? [store.presets.current] : []));
     const items = store.browse?.items ?? [];
+    const selectedIds = new Set(items.filter((item) => item.selected).map((item) => item.id));
     const installedSkills = items.filter((item) => item.selected && item.kind === "skill").length;
     const installedAgents = items.filter((item) => item.selected && item.kind === "agent").length;
 
     return html`
       <p class="intro">
         A preset is a named selection — the fastest way to give a new repository a working set.
-        Applying one replaces the current selection and syncs it. Nothing is deleted from disk;
-        deselected items stay until you prune them.
+        Presets combine: adding one keeps every other preset and anything you picked in Browse.
+        Nothing is deleted from disk; deselected items stay until you prune them.
       </p>
       <div class="grid">
         ${presets.map((preset) => {
-          const delta = presetDelta(preset, installedSkills, installedAgents);
+          const delta = presetDelta(preset, selectedIds, {
+            skills: installedSkills,
+            agents: installedAgents,
+          });
           const isEverything = preset.name === "Everything";
           const isRecommended = preset.recommended === true;
-          const isCurrent = preset.name === current;
+          const isActive = active.has(preset.name);
           return html`
-            <div class="card ${isCurrent ? "current" : ""}">
+            <div class="card ${isActive ? "applied" : ""}">
               <h2>
                 ${preset.name}
-                ${isCurrent ? html`<span class="pill ok">current</span>` : ""}
-                ${isRecommended && !isCurrent ? html`<span class="pill ok">recommended</span>` : ""}
+                ${isActive ? html`<span class="pill ok">applied</span>` : ""}
+                ${isRecommended && !isActive ? html`<span class="pill ok">recommended</span>` : ""}
                 ${isEverything ? html`<span class="pill warn">everything</span>` : ""}
               </h2>
               <p>${preset.description || "(no description)"}</p>
@@ -124,15 +130,15 @@ export class PresetsView extends LitElement {
                 <span class="muted">·</span>
                 <span>${pluralise(preset.agents, "agent")}</span>
                 <span class="spacer" style="flex:1"></span>
-                <span class="delta" title="Difference against your current selection">${delta.label}</span>
+                <span class="delta" title="Items this preset would add to your selection">${delta.label}</span>
               </div>
               <div class="footer">
                 <button
-                  class="${isCurrent || isRecommended ? "primary" : "secondary"}"
-                  ?disabled=${store.loading}
-                  @click=${() => void store.applyPreset(preset.name)}
+                  class="${isActive || isRecommended ? "primary" : "secondary"}"
+                  ?disabled=${store.loading || isActive}
+                  @click=${() => void store.addPreset(preset.name)}
                 >
-                  ${isCurrent ? "Re-apply" : "Use this preset"}
+                  ${isActive ? "Applied" : "Add to selection"}
                 </button>
               </div>
             </div>

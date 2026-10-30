@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.13.0 (2026-10-30)
+
+- Presets now compose instead of replacing each other. `.ai/ai.json` gains a `presets` array (the old `preset` string is still read and is folded into the array on the next write); `init --preset` keeps its replace-the-selection bootstrap behaviour, while the new `catalog.py preset add|remove` edits the list additively. Explicit `skills`/`agents` picks and `exclude` entries survive both operations.
+- The Presets tab uses the additive command: each card shows an **applied** badge, an **Add to selection** button, and an exact "N to add" count based on the preset's resolved ids instead of a count-only comparison that could report items "to remove".
+- Removing an item that a preset contributes now records it in `exclude` (that is what the field was for) instead of failing with "not declared"; dependency-only items still ask you to remove the dependent, and orphan checks run for exclusions too.
+- `catalog.py presets --json` adds `active: string[]` alongside `current`, and each preset card carries the resolved `ids`.
+- Items can be **locked** so an edit you made on purpose is never overwritten. `.ai/ai.json` gains a `locked` array; `catalog.py lock|unlock <id...>` edits it, Installed rows offer Lock/Unlock, and Updates lists frozen rows separately. `update` (even with `--force`) and `sync` leave an installed locked item untouched and keep its pristine hash, so unlocking still reports the edit as drift. A missing locked item is still materialised, as on a fresh clone.
+- **Install markers are gone.** `.ai/ai.lock.json` already records an item's id, ref, hash, path and materialize mode, so the extra `.ai-installed.json` / `.ai/installed/<id>.<kind>.json` files were redundant. They are no longer written, and `sync` reports and removes any left by an earlier version (including the now-empty `.ai/installed/` directory).
+- **Supporting `.ai/` folders are created for a new project, never pruned.** A repository with no manifest gets plans, patterns, reference, checklists and `session-context.md` during setup (`bootstrap`, `init`, or the first `sync`). Once they exist, nothing overwrites or removes them; `catalog.py scaffold` / **Add template folders** only copies missing files. Existing projects are not re-seeded by ordinary sync.
+- **The generated catalog index is local-only.** It now lives at `.ai/tmp/catalog-index.json` (gitignored) instead of `.ai/catalog/index.json`; a legacy index at the old path is removed on the next sync. Presets, categories, schemas and the agent configuration are unchanged.
+- Upgrading from an earlier version cleans up only generated state: legacy markers and the old index disappear on the next activation or sync (bootstrap runs the same cleanup). Existing scaffold files are left exactly as they are.
+- Settings → Maintenance adds **Add template folders**, reports legacy cleanup in the setup toast, and no longer implies that setup or sync re-seeds every existing project.
+- The generated `.github/copilot-instructions.md` rewrites shared `AGENTS.md` platform paths from `.claude/` to `.github/` (`.claude/settings.json` stays as written), so a valid project no longer fails the template's stale-reference check.
+- The extension now bundles the corrected `.ai/tests/validate-release.py`. Activation/bootstrap refreshes an unmodified old copy, so implementing repositories stop failing the template-only release-layout assertion even when their pinned template predates the fix.
+- **AI clients are selectable.** `.ai/ai.json` gains a `clients` array (`claude`, `copilot`, `reasonix`); new projects default to Claude only, while a missing field keeps every client for existing projects. Settings → Clients and `catalog.py clients --set ...` update it. `sync-platforms.py` creates or removes only the selected clients' junctions; disabling a client never deletes a real directory or `.github/workflows`, and removes `.claude`/`.github`/`.reasonix` only when they are empty. Generated Copilot instructions are removed when Copilot is disabled, and Claude settings/Copilot instructions are not re-created for disabled clients.
+
 ## 0.12.0 (2026-10-29)
 
 - `microsoft/aspire-skills` is now a built-in source (`aspire-skills`) with its seven official Aspire skills and a new `Aspire` preset. It is indexed before `awesome-copilot` because both ship an `aspire` skill; the official one keeps the name.

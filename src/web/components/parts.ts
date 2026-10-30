@@ -67,6 +67,18 @@ export class EmptyState extends LitElement {
 }
 customElements.define("empty-state", EmptyState);
 
+/** A padlock, open when the item is not locked; the tooltip carries the verb. */
+export function lockIcon(locked: boolean) {
+  const shackle = locked
+    ? "M5.5 7V5a2.5 2.5 0 0 1 5 0v2"
+    : "M5.5 7V5a2.5 2.5 0 0 1 4.8-.9";
+  return html`<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+    <rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="currentColor" />
+    <path d=${shackle} fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round" />
+  </svg>`;
+}
+
 /** Inline glyphs so no icon font dependency is needed. */
 export function kindIcon(kind: string) {
   const path = kind === "agent"

@@ -5,6 +5,7 @@ resolver relies on plus the closure that turns an agent into its required
 skills. Every id in the real file was validated against the 1066-item catalog.
 """
 
+import argparse
 import importlib.util
 import json
 import sys
@@ -125,6 +126,97 @@ def test_the_old_full_preset_name_is_an_alias_for_everything():
     assert resolved == {"skill": ["template:alpha"], "agent": ["template:lead"],
                         "instruction": [], "prompt": [], "plugin": [], "hook": []}
     assert catalog._preset_selection({"preset": "Everything"}, index_by_key) == resolved
+
+
+def _index(*entries) -> dict:
+    return {
+        (kind, item_id): {
+            "id": item_id, "kind": kind, "source": "template", "requires": [],
+        }
+        for kind, item_id in entries
+    }
+
+
+def test_presets_compose_instead_of_replacing_each_other(monkeypatch):
+    monkeypatch.setattr(catalog, "_load_presets", lambda: {"presets": {
+        "A": {"skills": ["template:a"]},
+        "B": {"skills": ["template:b"], "agents": ["template:lead"]},
+    }})
+    index = _index(("skill", "template:a"), ("skill", "template:b"),
+                   ("agent", "template:lead"))
+
+    resolved = catalog._preset_selection({"presets": ["A", "B"]}, index)
+
+    assert resolved["skill"] == ["template:a", "template:b"]
+    assert resolved["agent"] == ["template:lead"]
+
+
+def test_the_legacy_preset_field_is_one_entry_of_the_list():
+    manifest = {"preset": "full", "presets": ["Everything", "Aspire"]}
+
+    # `full` is an alias, and the duplicate it would add is dropped.
+    assert catalog._preset_names(manifest) == ["Everything", "Aspire"]
+
+
+def test_preset_add_and_remove_keep_the_rest_of_the_selection(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CATALOG_ROOT", str(tmp_path))
+    manifest = {
+        "version": 1,
+        "sources": {"template": {"repo": "owner/repo", "ref": "main"}},
+        "preset": "Minimal",
+        "skills": ["architect"],
+        "agents": [],
+        "exclude": ["code-reviewer"],
+    }
+    path = tmp_path / ".ai" / "ai.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert catalog.cmd_preset(
+        argparse.Namespace(preset_action="add", names=["Aspire"], json=True)) == 0
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    # The legacy singleton is migrated into the additive list.
+    assert saved["presets"] == ["Minimal", "Aspire"]
+    assert "preset" not in saved
+    assert saved["skills"] == ["architect"]
+    assert saved["exclude"] == ["code-reviewer"]
+
+    assert catalog.cmd_preset(
+        argparse.Namespace(preset_action="remove", names=["Minimal"], json=True)) == 0
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["presets"] == ["Aspire"]
+    assert saved["skills"] == ["architect"]
+    assert saved["exclude"] == ["code-reviewer"]
+    capsys.readouterr()
+
+
+def test_removing_a_preset_item_records_an_exclusion(tmp_path, monkeypatch):
+    monkeypatch.setenv("CATALOG_ROOT", str(tmp_path))
+    monkeypatch.setenv("CATALOG_OFFLINE", "1")
+    for name in ("alpha", "beta"):
+        skill = tmp_path / ".ai" / "skills" / name
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: {name}\n---\n\n{name}\n",
+            encoding="utf-8")
+    path = tmp_path / ".ai" / "ai.json"
+    path.write_text(json.dumps({
+        "version": 1,
+        "sources": {"template": {"repo": "owner/repo", "ref": "main"}},
+        "presets": ["Everything"],
+        "skills": [],
+        "agents": [],
+    }), encoding="utf-8")
+
+    assert catalog.cmd_remove(argparse.Namespace(
+        ids=["alpha"], kind=None, force=False, prune=False, json=True)) == 0
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    # The item stays available to others but is opted out of the preset.
+    assert saved["exclude"] == ["alpha"]
+    assert saved["presets"] == ["Everything"]
+    assert saved["skills"] == []
 
 
 def test_an_agent_preset_brings_its_dependencies():

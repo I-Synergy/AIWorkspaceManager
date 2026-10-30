@@ -35,6 +35,9 @@ const FILES = [
   // should have the whole `.ai/scripts/` set, not only the resolver's helpers.
   [".ai/scripts/hygiene-lint.py", ".ai/scripts/hygiene-lint.py"],
   [".ai/scripts/migrate-to-ai.py", ".ai/scripts/migrate-to-ai.py"],
+  // A template-only check, shipped so the extension can correct a project
+  // whose pinned template predates the fix that makes it skip derived repos.
+  [".ai/tests/validate-release.py", ".ai/tests/validate-release.py"],
   // Vocabulary, presets and schemas: without these a fresh repo has no
   // categories and no presets to choose from.
   ["catalog/presets.json", "catalog/presets.json"],

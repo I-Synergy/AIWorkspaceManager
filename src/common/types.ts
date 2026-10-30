@@ -17,6 +17,9 @@ export function fail<T = never>(error: string): Result<T> {
 
 export type ItemKind = "skill" | "agent" | "instruction" | "prompt" | "plugin" | "hook";
 
+/** AI clients whose platform folders are generated. */
+export type ClientName = "claude" | "copilot" | "reasonix";
+
 export interface Bootstrap {
   WorkspaceName: string;
   HasManifest: boolean;
@@ -40,6 +43,8 @@ export interface PresetCard {
   description: string;
   skills: number;
   agents: number;
+  /** Resolved ids, dependencies included, so the UI can say what is new. */
+  ids?: string[];
   /** The preset the UI leads with; `Everything` stays available but not promoted. */
   recommended?: boolean;
 }
@@ -69,6 +74,8 @@ export interface CatalogItem {
   selected: boolean;
   status: string;
   installed: boolean;
+  /** Frozen by the user: update and sync will not overwrite it. */
+  locked: boolean;
   localModified: boolean;
   upstreamChanged: boolean;
 }
@@ -92,6 +99,8 @@ export interface CategoryRow {
 export interface BrowsePayload {
   source: { id: string; root: string; ref: string; sameDir: boolean; remote: boolean };
   materialize: "link" | "copy";
+  /** Clients selected in .ai/ai.json; absent means every legacy client. */
+  clients?: ClientName[];
   summary: BrowseSummary;
   sources: SourceRow[];
   presets: PresetCard[];
@@ -104,6 +113,8 @@ export interface UpdateRow {
   displayId: string;
   kind: ItemKind;
   status: string;
+  /** Frozen by the user: reported here, never applied. */
+  locked?: boolean;
   path: string;
   source: string;
 }
@@ -112,6 +123,8 @@ export interface UpdatePayload {
   dryRun: boolean;
   ready: UpdateRow[];
   blocked: UpdateRow[];
+  /** Locked rows that would otherwise be ready or in conflict. */
+  locked?: UpdateRow[];
   remote: boolean;
   /** Whether any *selected* item resolves remotely — a local selection has no
       upstream even when another, unselected source is remote. */
@@ -119,7 +132,10 @@ export interface UpdatePayload {
 }
 
 export interface PresetsPayload {
+  /** First active preset; kept for resolvers that predate the additive list. */
   current: string | null;
+  /** Every preset in the selection, in manifest order. */
+  active?: string[];
   presets: PresetCard[];
 }
 
@@ -177,6 +193,8 @@ export interface BootstrapPayload {
     protected: string[];
   };
   scaffold: { copied: string[]; skipped: string[] };
+  /** Legacy markers / old index removed during upgrade cleanup. */
+  legacyRemoved?: string[];
 }
 
 /** The project name/intention and what writing them touched. */
@@ -219,7 +237,9 @@ export interface HostAPI {
   getProject(params: Record<string, never>): Promise<Result<ProjectInfo>>;
   /** Store name/intention and fill the template documents and scaffold. */
   describeProject(params: { Name: string; Intention: string }): Promise<Result<ProjectInfo>>;
-  applyPreset(params: { Name: string }): Promise<Result<CliResult>>;
+  addPreset(params: { Name: string }): Promise<Result<CliResult>>;
+  /** Freeze or thaw items so update/sync leave their content alone. */
+  setLocked(params: { Ids: string[]; Locked: boolean }): Promise<Result<CliResult>>;
   install(params: { Ids: string[] }): Promise<Result<CliResult>>;
   remove(params: { Ids: string[]; Prune: boolean }): Promise<Result<CliResult>>;
   sync(params: Record<string, never>): Promise<Result<CliResult>>;
@@ -227,6 +247,10 @@ export interface HostAPI {
   pruneDeselected(params: Record<string, never>): Promise<Result<CliResult>>;
   writeNotice(params: Record<string, never>): Promise<Result<CliResult>>;
   rebuildIndex(params: Record<string, never>): Promise<Result<CliResult>>;
+  /** Copy any missing template `.ai/` folders and files (never overwrites). */
+  addScaffold(params: Record<string, never>): Promise<Result<CliResult>>;
+  /** Select the AI clients and reconcile their platform folders. */
+  setClients(params: { Clients: ClientName[] }): Promise<Result<CliResult>>;
   openFile(params: { Path: string }): Promise<Result<null>>;
   openUpstream(params: { Url: string }): Promise<Result<null>>;
   setPythonPath(params: { Value: string }): Promise<Result<null>>;

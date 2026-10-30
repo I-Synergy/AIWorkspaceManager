@@ -1,6 +1,6 @@
 import type {
-  Bootstrap, BrowsePayload, CliResult, ItemKind, PresetsPayload, ProjectInfo, ReleasePayload,
-  Result, UpdatePayload,
+  Bootstrap, BrowsePayload, ClientName, CliResult, ItemKind, PresetsPayload, ProjectInfo,
+  ReleasePayload, Result, UpdatePayload,
 } from "../common/types";
 import { hostApi, router } from "./registrations";
 import { itemKey, pickedIds } from "./logic";
@@ -196,12 +196,14 @@ class Store extends EventTarget {
         this.notify("error", `Set up: ${result.error}`);
         return false;
       }
-      const { created, path, selected, tooling, scaffold } = result.value;
+      const { created, path, selected, tooling, scaffold, legacyRemoved } = result.value;
       const copied = tooling.copied.length + scaffold.copied.length;
       const kept = tooling.protected.length + scaffold.skipped.length;
-      this.notify("info", created
+      const cleaned = legacyRemoved?.length ?? 0;
+      const cleanup = cleaned ? ` ${cleaned} old state file(s) cleaned.` : "";
+      this.notify("info", (created
         ? `Set up ${path} (${selected} selected, ${copied} file(s) copied).`
-        : `${copied} template file(s) added, ${kept} kept.`);
+        : `${copied} template file(s) added, ${kept} kept.`) + cleanup);
       await this.loadAsync();
       return true;
     } catch (error) {
@@ -426,8 +428,15 @@ class Store extends EventTarget {
     return this.runAsync("Update", () => hostApi.updateItems({ Ids: [id], Force: force }));
   }
 
-  applyPreset(name: string): Promise<boolean> {
-    return this.runAsync(`Preset ${name}`, () => hostApi.applyPreset({ Name: name }));
+  addPreset(name: string): Promise<boolean> {
+    return this.runAsync(`Adding preset ${name}`, () => hostApi.addPreset({ Name: name }));
+  }
+
+  setLocked(ids: string[], locked: boolean): Promise<boolean> {
+    return this.runAsync(
+      `${locked ? "Locking" : "Unlocking"} ${ids.length} item(s)`,
+      () => hostApi.setLocked({ Ids: ids, Locked: locked }),
+    );
   }
 
   prune(): Promise<boolean> {
@@ -440,6 +449,17 @@ class Store extends EventTarget {
 
   rebuildIndex(): Promise<boolean> {
     return this.runAsync("Rebuild index", () => hostApi.rebuildIndex({}));
+  }
+
+  addScaffold(): Promise<boolean> {
+    return this.runAsync("Add template folders", () => hostApi.addScaffold({}));
+  }
+
+  setClients(clients: ClientName[]): Promise<boolean> {
+    return this.runAsync(
+      `Clients: ${clients.join(", ") || "none"}`,
+      () => hostApi.setClients({ Clients: clients }),
+    );
   }
 }
 
