@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { createNonce } from "../common/nonce";
 import { RpcHost } from "../common/rpc/rpc-host";
-import type { HostAPI } from "../common/types";
+import type { HostAPI, LogSink } from "../common/types";
 
 export const PANEL_ID = "aiManager.panel";
 
@@ -19,10 +19,12 @@ export class AiManagerPanel implements vscode.Disposable {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly api: HostAPI,
+    private readonly log: LogSink,
   ) {}
 
   show(tab?: PanelTab): void {
     this.requestedTab = tab;
+    this.log.debug(`Show panel${tab ? ` on ${tab}` : ""}.`);
     if (this.panel) {
       this.panel.reveal(undefined, false);
       // The webview is already loaded: nudge it to the requested view.
@@ -51,10 +53,12 @@ export class AiManagerPanel implements vscode.Disposable {
   private attach(panel: vscode.WebviewPanel): void {
     this.panel = panel;
     this.rpc?.dispose();
-    this.rpc = new RpcHost(panel.webview, this.api);
+    this.rpc = new RpcHost(panel.webview, this.api, this.log);
     panel.webview.html = this.html(panel.webview);
+    this.log.info("Webview attached.");
 
     panel.onDidDispose(() => {
+      this.log.info("Webview disposed.");
       this.rpc?.dispose();
       this.rpc = undefined;
       this.panel = undefined;
