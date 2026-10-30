@@ -56,8 +56,9 @@ export function createHostAPI(context: HostApiContext): HostAPI {
     const elapsed = Date.now() - started;
     if (result.code !== 0) {
       const detail = result.stderr.trim().split(/\r?\n/)[0];
+      const suffix = detail ? `: ${detail}` : "";
       context.log?.warn(
-        `catalog.py ${args[0]} exited ${result.code} after ${elapsed} ms${detail ? `: ${detail}` : ""}`);
+        `catalog.py ${args[0]} exited ${result.code} after ${elapsed} ms${suffix}`);
     } else {
       context.log?.debug(`catalog.py ${args[0]} finished in ${elapsed} ms`);
     }
