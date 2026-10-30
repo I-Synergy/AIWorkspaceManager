@@ -27,6 +27,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     outputs:
       build_number: ${{ steps.build.outputs.build_number }}
+      version_package: ${{ steps.version.outputs.VersionPackage }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -46,6 +47,7 @@ jobs:
         shell: bash
         env:
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+          BUILD_REASON: ${{ github.event_name == 'push' && 'Merge' || (github.event_name == 'pull_request' && 'PullRequest' || 'Manual') }}
         run: |
           set -euo pipefail
           build_number="$INPUT_BUILD_NUMBER"
@@ -56,13 +58,33 @@ jobs:
             echo "::error::Invalid build number '$build_number'. Expected YYYY.1MMdd.1HHmm."
             exit 1
           fi
-          echo "Build number: $build_number"
+          echo "Build number: $build_number ($BUILD_REASON)"
           echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+          echo "build_reason=$BUILD_REASON" >> "$GITHUB_OUTPUT"
+
+      - name: Derive version variables
+        id: version
+        shell: bash
+        env:
+          BUILD_NUMBER: ${{ steps.build.outputs.build_number }}
+          BUILD_REASON: ${{ steps.build.outputs.build_reason }}
+        run: |
+          set -euo pipefail
+          version_informational="$BUILD_NUMBER"
+          if [ "$BUILD_REASON" = "PullRequest" ]; then
+            version_package="${version_informational}-preview"
+          else
+            version_package="$version_informational"
+          fi
+          echo "VersionInformational=$version_informational" >> "$GITHUB_OUTPUT"
+          echo "VersionNumber=${version_informational}.0" >> "$GITHUB_OUTPUT"
+          echo "VersionPackage=$version_package" >> "$GITHUB_OUTPUT"
+          echo "Package version: $version_package"
 
       # The committed version is a development baseline. Every CI build packages
-      # the derived build number, so releases never require a version-bump commit.
+      # the derived version, so releases never require a version-bump commit.
       - name: Set package version
-        run: npm version "${{ steps.build.outputs.build_number }}" --no-git-tag-version --allow-same-version
+        run: npm version "${{ steps.version.outputs.VersionPackage }}" --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: npm ci --ignore-scripts

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Releases are versioned automatically.** A push to `main` derives a UTC build number (`YYYY.1MMdd.1HHmm`), uses it as the extension version, publishes to the Marketplace, tags the build number and creates a GitHub Release with generated notes. Version-bump commits, the `Release` workflow and `tools/release.mjs` are gone; pull requests build and test without publishing.
+- **Releases use the same automatic versioning as the AI repository.** A push to `main` derives a UTC build number (`YYYY.1MMdd.1HHmm`) and the matching `VersionInformational`/`VersionPackage` values (`-preview` on pull requests), uses `VersionPackage` as the extension version, publishes to the Marketplace, tags the build number and creates a GitHub Release with generated notes. Version-bump commits, the `Release` workflow and `tools/release.mjs` are gone; pull requests build and test without publishing.
 - The README publishing section documents the automatic flow, and `RELEASE_NOTES.md` is no longer required.
 
 ## 0.13.2 (2026-10-30)
