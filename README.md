@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/I-Synergy/AIWorkspaceManager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/I-Synergy/AIWorkspaceManager/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/I-Synergy/AIWorkspaceManager)](https://github.com/I-Synergy/AIWorkspaceManager/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [![VS Marketplace](https://vsmarketplacebadges.dev/version-short/I-Synergy.aiworkspacemanager.svg)](https://marketplace.visualstudio.com/items?itemName=I-Synergy.aiworkspacemanager)
 [![Installs](https://vsmarketplacebadges.dev/installs-short/I-Synergy.aiworkspacemanager.svg)](https://marketplace.visualstudio.com/items?itemName=I-Synergy.aiworkspacemanager)
@@ -15,7 +16,6 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=security_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=sqale_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A full-page manager for the skills, agents, instructions and prompts each repository installs. The
 catalog comes from [I-Synergy/AI](https://github.com/I-Synergy/AI),
