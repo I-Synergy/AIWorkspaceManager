@@ -6,6 +6,7 @@
 - The README publishing section documents the automatic flow, and `RELEASE_NOTES.md` is no longer required.
 - **Fixed the webview hanging on "Reading the catalog…".** The RPC client dropped every host response because it compared `event.source` with `window.parent`, and the VS Code webview preload rewrites `window.parent` to point at the webview itself. Responses are now accepted from the webview's own origin only; the UI no longer waits out the 10-minute RPC timeout.
 - **Diagnostics now show up in VS Code.** A timestamped **AI Workspace Manager** output channel records activation, template setup, every `catalog.py` invocation with its duration and exit status, RPC failures, and webview warnings/errors (console and uncaught exceptions) forwarded from the panel. A timed-out RPC call is logged too, instead of only surfacing after ten minutes in the webview.
+- The SonarCloud project is keyed `I-Synergy_AIWorkspaceManager` (it was `I-Synergy_AIManager`), matching the repository name; the README badge links follow the new key.
 
 ## 0.13.2 (2026-10-30)
 

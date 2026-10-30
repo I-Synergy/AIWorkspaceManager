@@ -9,12 +9,12 @@
 [![Downloads](https://vsmarketplacebadges.dev/downloads-short/I-Synergy.aiworkspacemanager.svg)](https://marketplace.visualstudio.com/items?itemName=I-Synergy.aiworkspacemanager)
 [![Rating](https://vsmarketplacebadges.dev/rating-short/I-Synergy.aiworkspacemanager.svg)](https://marketplace.visualstudio.com/items?itemName=I-Synergy.aiworkspacemanager)
 
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=alert_status)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=bugs)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=code_smells)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=vulnerabilities)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=security_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIManager&metric=sqale_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AIManager)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIWorkspaceManager&metric=alert_status)](https://sonarcloud.io/dashboard?id=I-Synergy_AIWorkspaceManager)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIWorkspaceManager&metric=bugs)](https://sonarcloud.io/dashboard?id=I-Synergy_AIWorkspaceManager)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIWorkspaceManager&metric=code_smells)](https://sonarcloud.io/dashboard?id=I-Synergy_AIWorkspaceManager)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIWorkspaceManager&metric=vulnerabilities)](https://sonarcloud.io/dashboard?id=I-Synergy_AIWorkspaceManager)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIWorkspaceManager&metric=security_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AIWorkspaceManager)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AIWorkspaceManager&metric=sqale_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AIWorkspaceManager)
 
 
 A full-page manager for the skills, agents, instructions and prompts each repository installs. The
