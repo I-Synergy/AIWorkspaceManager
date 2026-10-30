@@ -19,7 +19,7 @@ export function createRpcClient(
 
   window.addEventListener("message", (event: MessageEvent) => {
     // Only the embedding VS Code host may answer RPC calls.
-    if (event.source !== window.parent) {
+    if (event.source !== window.parent || event.origin !== window.location.origin) {
       return;
     }
     const message = event.data as RpcResponse;

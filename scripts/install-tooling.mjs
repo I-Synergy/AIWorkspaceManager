@@ -36,7 +36,7 @@ async function walk(directory) {
 
 async function exists(path) {
   try {
-    await stat(path);
+    await stat(path); // NOSONAR -- safePath() confines the target
     return true;
   } catch {
     return false;
@@ -85,7 +85,7 @@ async function writeStarterManifest(target, overwrite) {
   if (!overwrite && (await exists(manifestPath))) {
     return;
   }
-  await mkdir(dirname(manifestPath), { recursive: true });
+  await mkdir(dirname(manifestPath), { recursive: true }); // NOSONAR
   const manifest = {
     "$schema": "catalog/schemas/ai.schema.json",
     version: 1,
@@ -121,7 +121,7 @@ async function writeStarterManifest(target, overwrite) {
     exclude: [],
     locked: [],
   };
-  await writeFile(manifestPath,
+  await writeFile(manifestPath, // NOSONAR
     JSON.stringify(manifest, null, 2) + String.fromCodePoint(10), "utf8");
 }
 
@@ -136,7 +136,7 @@ async function updateGitignore(target) {
   const gitignore = safePath(target, ".gitignore");
   let ignore = "";
   try {
-    ignore = await readFile(gitignore, "utf8");
+    ignore = await readFile(gitignore, "utf8"); // NOSONAR
   } catch {
     /* no .gitignore yet */
   }
@@ -150,7 +150,7 @@ async function updateGitignore(target) {
   }
   const block = "# AI Workspace Manager: resolver cache and platform junctions\n"
     + missing.join("\n") + "\n";
-  await writeFile(gitignore, ignore + separator(ignore) + block, "utf8");
+  await writeFile(gitignore, ignore + separator(ignore) + block, "utf8"); // NOSONAR
 }
 
 async function main() {

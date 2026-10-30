@@ -182,7 +182,7 @@ function writeVersion(version) {
   }
   const lock = JSON.parse(readFileSync(lockPath, "utf-8"));
   lock.version = version;
-  if (lock.packages && lock.packages[""]) {
+  if (lock.packages?.[""]) {
     lock.packages[""].version = version;
   }
   writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf-8");

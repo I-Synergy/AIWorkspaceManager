@@ -35,7 +35,7 @@ jobs:
 
       - name: Resolver tests
         run: |
-          pip install --only-binary :all: -r requirements-dev.txt
+          pip install --only-binary :all: --require-hashes -r requirements-dev.txt
           npm run test:resolver
 
       - name: Build
