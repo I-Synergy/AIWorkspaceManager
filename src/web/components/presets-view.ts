@@ -22,7 +22,7 @@ export class PresetsView extends LitElement {
     super.disconnectedCallback();
   }
 
-  static override styles = [
+  static override readonly styles = [
     sharedStyles,
     css`
       :host {

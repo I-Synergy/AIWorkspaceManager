@@ -10,116 +10,130 @@
  * Runs as a plain script (not inside the extension host) so the same code path
  * can be exercised from a terminal, which is how it was verified.
  */
-import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TOOLING = join(HERE, "..", "tooling");
 
+const GITIGNORE_ENTRIES = [
+  "__pycache__/", "*.py[cod]", ".pytest_cache/", ".ai/tmp/",
+  ".claude/skills/", ".claude/agents/", ".github/skills/", ".github/agents/",
+  ".github/instructions/", ".github/prompts/",
+  ".claude/commands/", ".claude/instructions/",
+  ".reasonix/skills/", ".reasonix/agents/",
+];
+
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
-  const files = [];
-  for (const entry of entries) {
+  const nested = await Promise.all(entries.map((entry) => {
     const full = join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...(await walk(full)));
-    } else {
-      files.push(full);
-    }
-  }
-  return files;
+    return entry.isDirectory() ? walk(full) : Promise.resolve([full]);
+  }));
+  return nested.flat();
 }
 
 async function exists(path) {
-  return stat(path).then(() => true, () => false);
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-async function main() {
-  const target = process.argv[2];
-  const overwrite = process.argv.includes("--overwrite");
-  if (!target) {
-    throw new Error("usage: install-tooling.mjs <target-repo-root> [--overwrite]");
+/** Resolve a path and refuse anything that escapes the target repository. */
+function safePath(target, ...parts) {
+  const base = resolve(target);
+  const path = resolve(base, ...parts);
+  if (path !== base && !path.startsWith(base + sep)) {
+    throw new Error(`refusing path outside target repository: ${path}`);
   }
+  return path;
+}
 
+async function copyTooling(target, overwrite) {
   const sources = await walk(TOOLING);
-  const copied = [];
-  const skipped = [];
-
-  for (const source of sources) {
+  const results = await Promise.all(sources.map(async (source) => {
     // Normalise to forward slashes: `relative()` returns backslashes on Windows
     // and a prefix test against "scripts/" would never match.
     const rel = relative(TOOLING, source).split(sep).join("/");
     if (rel === "tooling.json") {
-      continue;
+      return { copied: [], skipped: [] };
     }
     // The bundle keeps the vocabulary at `catalog/`; a project installs it
     // under `.ai/catalog`, so everything the project owns lives in `.ai/`.
     const destinationRel = rel.startsWith("catalog/") ? `.ai/${rel}` : rel;
-    const destination = join(target, ...destinationRel.split("/"));
+    const destination = safePath(target, ...destinationRel.split("/"));
     if (!overwrite && (await exists(destination))) {
-      skipped.push(destination);
-      continue;
+      return { copied: [], skipped: [destination] };
     }
     await mkdir(dirname(destination), { recursive: true });
     await copyFile(source, destination);
-    copied.push(destination);
-  }
+    return { copied: [destination], skipped: [] };
+  }));
+  return {
+    copied: results.flatMap((result) => result.copied),
+    skipped: results.flatMap((result) => result.skipped),
+  };
+}
 
-  // A repo with no catalog of its own gets a starter manifest that resolves the
-  // template and the copilot catalog remotely. Without it the workspace has an
-  // empty catalog and even the presets cannot resolve, which is what a bare
-  // tooling copy produced on a real project.
-  const manifestPath = join(target, ".ai", "ai.json");
-  let starter = "kept";
+/** A bare repo gets a starter manifest that resolves the template and sources. */
+async function writeStarterManifest(target, overwrite) {
+  const manifestPath = safePath(target, ".ai", "ai.json");
   if (!overwrite && (await exists(manifestPath))) {
-    starter = "kept";
-  } else {
-    await mkdir(dirname(manifestPath), { recursive: true });
-    await writeFile(manifestPath, JSON.stringify({
-      "$schema": "catalog/schemas/ai.schema.json",
-      version: 1,
-      sources: {
-        "template": { repo: "I-Synergy/AI", ref: "main", resolve: "remote" },
-        "aspire-skills": {
-          repo: "microsoft/aspire-skills", ref: "main", resolve: "remote", license: "MIT",
-        },
-        "awesome-copilot": {
-          repo: "github/awesome-copilot", ref: "main", resolve: "remote", license: "MIT",
-        },
-        "dotnet-maui": {
-          repo: "dotnet/maui-labs", ref: "main", resolve: "remote", license: "MIT",
-          paths: {
-            skill: ["plugins/dotnet-maui/skills"],
-            agent: [".github/agents"],
-            instruction: [".github/instructions"],
-            plugin: [], hook: [],
-          },
-        },
-        "dotnet-maui-tooling": {
-          repo: "dotnet/maui-labs", ref: "main", resolve: "remote", license: "MIT",
-          paths: {
-            skill: ["plugins/dotnet-maui-tooling/skills"],
-            agent: [], instruction: [], plugin: [], hook: [],
-          },
+    return;
+  }
+  await mkdir(dirname(manifestPath), { recursive: true });
+  const manifest = {
+    "$schema": "catalog/schemas/ai.schema.json",
+    version: 1,
+    clients: ["claude"],
+    sources: {
+      "template": { repo: "I-Synergy/AI", ref: "main", resolve: "remote" },
+      "aspire-skills": {
+        repo: "microsoft/aspire-skills", ref: "main", resolve: "remote", license: "MIT",
+      },
+      "awesome-copilot": {
+        repo: "github/awesome-copilot", ref: "main", resolve: "remote", license: "MIT",
+      },
+      "dotnet-maui": {
+        repo: "dotnet/maui-labs", ref: "main", resolve: "remote", license: "MIT",
+        paths: {
+          skill: ["plugins/dotnet-maui/skills"],
+          agent: [".github/agents"],
+          instruction: [".github/instructions"],
+          plugin: [], hook: [],
         },
       },
-      skills: [], agents: [], instructions: [], plugins: [], hooks: [],
-      materialize: "copy",
-      exclude: [],
-    }, null, 2) + String.fromCharCode(10), "utf8");
-    starter = "created";
-  }
+      "dotnet-maui-tooling": {
+        repo: "dotnet/maui-labs", ref: "main", resolve: "remote", license: "MIT",
+        paths: {
+          skill: ["plugins/dotnet-maui-tooling/skills"],
+          agent: [], instruction: [], plugin: [], hook: [],
+        },
+      },
+    },
+    presets: [],
+    skills: [], agents: [], instructions: [], plugins: [], hooks: [],
+    materialize: "copy",
+    exclude: [],
+    locked: [],
+  };
+  await writeFile(manifestPath,
+    JSON.stringify(manifest, null, 2) + String.fromCodePoint(10), "utf8");
+}
 
-  // Resolver state and the platform junctions (the latter point into `.ai/`).
-  const entries = [
-    "__pycache__/", "*.py[cod]", ".pytest_cache/", ".ai/tmp/",
-    ".claude/skills/", ".claude/agents/", ".github/skills/", ".github/agents/",
-    ".github/instructions/", ".github/prompts/",
-    ".claude/commands/", ".claude/instructions/",
-    ".reasonix/skills/", ".reasonix/agents/",
-  ];
-  const gitignore = join(target, ".gitignore");
+function separator(text) {
+  if (!text) {
+    return "";
+  }
+  return text.endsWith("\n") ? "\n" : "\n\n";
+}
+
+async function updateGitignore(target) {
+  const gitignore = safePath(target, ".gitignore");
   let ignore = "";
   try {
     ignore = await readFile(gitignore, "utf8");
@@ -129,14 +143,27 @@ async function main() {
   const present = new Set(ignore.split(/\r?\n/)
     .map((line) => line.trim().replace(/\/$/, ""))
     .filter((line) => line && !line.startsWith("#")));
-  const missing = entries.filter((entry) => !present.has(entry.replace(/\/$/, "")));
-  if (missing.length > 0) {
-    const block = "# AI Workspace Manager: resolver cache and platform junctions\n"
-      + missing.join("\n") + "\n";
-    const content = !ignore ? block
-      : ignore + (ignore.endsWith("\n") ? "\n" : "\n\n") + block;
-    await writeFile(gitignore, content, "utf8");
+  const missing = GITIGNORE_ENTRIES.filter(
+    (entry) => !present.has(entry.replace(/\/$/, "")));
+  if (missing.length === 0) {
+    return;
   }
+  const block = "# AI Workspace Manager: resolver cache and platform junctions\n"
+    + missing.join("\n") + "\n";
+  await writeFile(gitignore, ignore + separator(ignore) + block, "utf8");
+}
+
+async function main() {
+  const rawTarget = process.argv[2];
+  const overwrite = process.argv.includes("--overwrite");
+  if (!rawTarget) {
+    throw new Error("usage: install-tooling.mjs <target-repo-root> [--overwrite]");
+  }
+
+  const target = resolve(rawTarget);
+  const { copied, skipped } = await copyTooling(target, overwrite);
+  await writeStarterManifest(target, overwrite);
+  await updateGitignore(target);
 
   const manifest = JSON.parse(await readFile(join(TOOLING, "tooling.json"), "utf8"));
   process.stdout.write(JSON.stringify({
@@ -146,7 +173,9 @@ async function main() {
   }) + "\n");
 }
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   process.stderr.write(`${error.message}\n`);
-  process.exit(1);
-});
+  process.exitCode = 1;
+}

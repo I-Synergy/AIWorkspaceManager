@@ -61,16 +61,15 @@ async function templateRoot() {
   // The layout the extension had while it lived inside the template repo.
   candidates.push(join(EXTENSION, "..", ".."));
 
-  for (const candidate of candidates) {
-    // The resolver may live only in this bundle (the template can drop it once
-    // the extension ships it), so any resolver sibling identifies a checkout.
-    if (await exists(join(candidate, ".ai", "scripts", "catalog.py"))
+  // The resolver may live only in this bundle (the template can drop it once
+  // the extension ships it), so any resolver sibling identifies a checkout.
+  const checks = await Promise.all(candidates.map(async (candidate) => ({
+    candidate,
+    found: await exists(join(candidate, ".ai", "scripts", "catalog.py"))
       || await exists(join(candidate, ".ai", "scripts", "sync-platforms.py"))
-      || await exists(join(candidate, ".ai", "scripts", "sync-skills.py"))) {
-      return candidate;
-    }
-  }
-  return undefined;
+      || await exists(join(candidate, ".ai", "scripts", "sync-skills.py")),
+  })));
+  return checks.find((check) => check.found)?.candidate;
 }
 
 /** Fail before touching anything: a half-copied tree is worse than none. */
@@ -79,13 +78,11 @@ async function copyFrom(root) {
   await rm(staging, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
 
-  const manifest = [];
-  const kept = [];
-  const absent = [];
-  for (const [from, to] of FILES) {
+  const results = await Promise.all(FILES.map(async ([from, to]) => {
     const destination = join(staging, to);
     await mkdir(dirname(destination), { recursive: true });
     const templatePath = join(root, from);
+    let fromSnapshot = false;
     if (await exists(templatePath)) {
       await cp(templatePath, destination);
     } else if (await exists(join(OUT, ...to.split("/")))) {
@@ -93,21 +90,23 @@ async function copyFrom(root) {
       // extension, for example). Keep the committed snapshot rather than
       // producing an incomplete bundle.
       await cp(join(OUT, ...to.split("/")), destination);
-      kept.push(to);
+      fromSnapshot = true;
     } else {
-      absent.push(from);
-      continue;
+      return { absent: from };
     }
     const content = await readFile(destination);
-    manifest.push({ path: to, bytes: content.length });
-  }
+    return { entry: { path: to, bytes: content.length }, kept: fromSnapshot ? to : null };
+  }));
+  const absent = results.filter((result) => result.absent).map((result) => result.absent);
+  const kept = results.filter((result) => result.kept).map((result) => result.kept);
+  const manifest = results.filter((result) => result.entry).map((result) => result.entry);
   if (absent.length > 0) {
     await rm(staging, { recursive: true, force: true });
     throw new Error(`no copy of ${absent.join(", ")} in the template or in tooling/`);
   }
 
   await writeFile(join(staging, "tooling.json"),
-    JSON.stringify({ files: manifest }, null, 2) + String.fromCharCode(10));
+    JSON.stringify({ files: manifest }, null, 2) + String.fromCodePoint(10));
 
   // Swap only once the new snapshot is complete.
   await rm(OUT, { recursive: true, force: true });
@@ -130,22 +129,19 @@ async function verifySnapshot() {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const recorded = new Map((manifest.files || []).map((entry) => [entry.path, entry.bytes]));
 
-  const problems = [];
-  for (const [, to] of FILES) {
+  const problems = (await Promise.all(FILES.map(async ([, to]) => {
     if (!recorded.has(to)) {
-      problems.push(`${to} is not in tooling.json`);
-      continue;
+      return `${to} is not in tooling.json`;
     }
     const path = join(OUT, ...to.split("/"));
     if (!(await exists(path))) {
-      problems.push(`${to} is missing`);
-      continue;
+      return `${to} is missing`;
     }
     const size = (await stat(path)).size;
-    if (size !== recorded.get(to)) {
-      problems.push(`${to} is ${size} bytes, tooling.json says ${recorded.get(to)}`);
-    }
-  }
+    return size === recorded.get(to)
+      ? null
+      : `${to} is ${size} bytes, tooling.json says ${recorded.get(to)}`;
+  }))).filter(Boolean);
   if (problems.length > 0) {
     throw new Error(`the committed tooling snapshot is inconsistent:\n  - ${problems.join("\n  - ")}`);
   }
@@ -155,20 +151,15 @@ async function verifySnapshot() {
 /** Recompute tooling.json from the files in `tooling/` (used after editing the
  *  committed snapshot by hand, which is how a standalone checkout updates it). */
 async function stampSnapshot() {
-  const missing = [];
-  for (const [, to] of FILES) {
-    if (!(await exists(join(OUT, ...to.split("/"))))) {
-      missing.push(to);
-    }
-  }
+  const missing = (await Promise.all(FILES.map(async ([, to]) =>
+    (await exists(join(OUT, ...to.split("/")))) ? null : to))).filter(Boolean);
   if (missing.length > 0) {
     throw new Error(`cannot stamp: ${missing.join(", ")} missing from tooling/`);
   }
-  const manifest = [];
-  for (const [, to] of FILES) {
+  const manifest = await Promise.all(FILES.map(async ([, to]) => {
     const path = join(OUT, ...to.split("/"));
-    manifest.push({ path: to, bytes: (await stat(path)).size });
-  }
+    return { path: to, bytes: (await stat(path)).size };
+  }));
   await writeFile(join(OUT, "tooling.json"),
     JSON.stringify({ files: manifest }, null, 2) + "\n");
   console.log(`tooling: stamped tooling.json (${manifest.length} file(s))`);
@@ -197,7 +188,9 @@ async function main() {
     + "(set AI_TEMPLATE_ROOT to refresh it)");
 }
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error(`tooling: ${error.message}`);
-  process.exit(1);
-});
+  process.exitCode = 1;
+}

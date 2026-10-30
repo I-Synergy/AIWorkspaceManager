@@ -5,7 +5,6 @@ import { hostApi } from "../registrations";
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
 import { kindIcon } from "./parts";
-import "./parts";
 
 /**
  * Browse: the catalog. Filters in the toolbar, a select-all header above the
@@ -30,7 +29,7 @@ export class BrowseView extends LitElement {
     super.disconnectedCallback();
   }
 
-  static override styles = [
+  static override readonly styles = [
     sharedStyles,
     css`
       :host {
@@ -228,6 +227,9 @@ export class BrowseView extends LitElement {
     const selectableIds = filtered.filter((item) => !item.selected).map((item) => item.id);
     const headerState = pickState(selectableIds, store.picked);
     const pickedCount = store.actionablePicked(false).length;
+    const installLabel = installable.length
+      ? `Install all ${installable.length} shown`
+      : "Everything shown is installed";
     const selected = browse.items.find((item) => itemKey(item) === store.selectedKey) ?? filtered[0];
     const sources = ["all", ...new Set(browse.items.map((item) => item.source))];
 
@@ -304,7 +306,7 @@ export class BrowseView extends LitElement {
           : html`
               <button class="primary" ?disabled=${installable.length === 0 || store.loading}
                 @click=${() => void store.install(installable)}>
-                ${installable.length ? `Install all ${installable.length} shown` : "Everything shown is installed"}
+                ${installLabel}
               </button>
             `}
       </div>

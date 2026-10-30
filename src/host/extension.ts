@@ -43,8 +43,8 @@ export function activate(context: vscode.ExtensionContext): void {
     treeDataProvider: tree,
     showCollapseAll: true,
   });
-  context.subscriptions.push(treeView);
   context.subscriptions.push(
+    treeView,
     treeView.onDidChangeVisibility((event) => {
       if (event.visible) {
         void tree?.refresh();
@@ -120,9 +120,9 @@ export function activate(context: vscode.ExtensionContext): void {
     const copied = result.value.tooling.copied.length + result.value.scaffold.copied.length;
     const cleaned = result.value.legacyRemoved?.length ?? 0;
     if (copied > 0 || cleaned > 0 || result.value.created) {
+      const cleanup = cleaned ? `, ${cleaned} old state file(s) cleaned` : "";
       console.log(`AI Workspace Manager: set up ${result.value.path} `
-        + `(${result.value.selected} selected, ${copied} file(s) copied`
-        + `${cleaned ? `, ${cleaned} old state file(s) cleaned` : ""}).`);
+        + `(${result.value.selected} selected, ${copied} file(s) copied${cleanup}).`);
     }
   };
 
@@ -130,7 +130,7 @@ export function activate(context: vscode.ExtensionContext): void {
     node: Node | undefined,
     action: "install" | "remove",
   ): Promise<void> => {
-    if (!node || node.kind !== "item") {
+    if (node?.kind !== "item") {
       return;
     }
     const item = node.item;
@@ -139,7 +139,8 @@ export function activate(context: vscode.ExtensionContext): void {
       : await api.remove({ Ids: [item.id], Prune: false });
     if (!result.ok || result.value.code !== 0) {
       const detail = result.ok ? result.value.stderr.trim() : result.error;
-      void vscode.window.showErrorMessage(`AI Workspace Manager: ${detail || `${action} failed`}`);
+      const failure = detail || `${action} failed`;
+      void vscode.window.showErrorMessage(`AI Workspace Manager: ${failure}`);
     }
     await refreshAll();
   };
@@ -183,8 +184,9 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.window.showTextDocument(document, { preview: false });
     }),
     vscode.window.registerWebviewPanelSerializer(PANEL_ID, {
-      deserializeWebviewPanel: async (restored: vscode.WebviewPanel) => {
+      deserializeWebviewPanel: (restored: vscode.WebviewPanel) => {
         panel?.restore(restored);
+        return Promise.resolve();
       },
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => void refreshContextKey()),
@@ -292,7 +294,8 @@ class CatalogTreeProvider implements vscode.TreeDataProvider<Node> {
         element.row.label,
         vscode.TreeItemCollapsibleState.Collapsed,
       );
-      node.description = `${element.row.count} item(s)${installed ? ` · ${installed} installed` : ""}`;
+      const installedText = installed ? ` · ${installed} installed` : "";
+      node.description = `${element.row.count} item(s)${installedText}`;
       node.tooltip = element.row.description || element.row.label;
       node.iconPath = new vscode.ThemeIcon("folder-library");
       node.contextValue = "category";

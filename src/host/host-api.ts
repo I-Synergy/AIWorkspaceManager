@@ -49,8 +49,8 @@ export function createHostAPI(context: HostApiContext): HostAPI {
   const json = async <T>(args: string[], what: string, wait = true): Promise<T> =>
     parseCliJson<T>(await cli(args, wait), what);
 
-  const exists = async (uri: vscode.Uri): Promise<boolean> =>
-    vscode.workspace.fs.stat(uri).then(() => true, () => false);
+  const exists = (uri: vscode.Uri): Promise<boolean> =>
+    Promise.resolve(vscode.workspace.fs.stat(uri).then(() => true, () => false));
 
   return {
     async getBootstrap() {
@@ -249,7 +249,7 @@ export function createHostAPI(context: HostApiContext): HostAPI {
             resolve(stdout);
           });
         });
-        const nl = String.fromCharCode(10);
+        const nl = String.fromCodePoint(10);
         const lastLine = output.trim().split(nl).pop() ?? "{}";
         const summary = JSON.parse(lastLine) as {
           copied?: string[]; skipped?: string[]; manifest?: string;

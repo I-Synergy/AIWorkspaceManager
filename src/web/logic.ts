@@ -178,11 +178,13 @@ export function presetDelta(
   selectedIds: ReadonlySet<string>,
   installed?: { skills: number; agents: number },
 ): PresetDelta {
-  const add = card.ids
-    ? card.ids.reduce((count, id) => count + (selectedIds.has(id) ? 0 : 1), 0)
-    : installed
-      ? Math.max(0, card.skills - installed.skills) + Math.max(0, card.agents - installed.agents)
-      : 0;
+  let add = 0;
+  if (card.ids) {
+    add = card.ids.reduce((count, id) => count + (selectedIds.has(id) ? 0 : 1), 0);
+  } else if (installed) {
+    add = Math.max(0, card.skills - installed.skills)
+      + Math.max(0, card.agents - installed.agents);
+  }
   return { add, label: add ? `${add} to add` : "already selected" };
 }
 

@@ -4,7 +4,6 @@ import { emptyUpdateNotice, filterUpdates, pluralise, releaseNotice, releaseSour
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
 import { kindIcon, lockIcon } from "./parts";
-import "./parts";
 
 /**
  * Updates: real only when a source resolves remotely. When it does not, the
@@ -30,7 +29,7 @@ export class UpdatesView extends LitElement {
     super.disconnectedCallback();
   }
 
-  static override styles = [
+  static override readonly styles = [
     sharedStyles,
     css`
       :host {
@@ -219,6 +218,25 @@ export class UpdatesView extends LitElement {
     const blocked = filtered.blocked;
     const filtering = store.updatesQuery !== "" || store.updatesKind !== "all"
       || store.updatesState !== "all" || store.updatesSource !== "all";
+    const readySection = ready.length
+      ? html`<h3>Ready to update (${ready.length})</h3>
+          ${ready.map((row) => this.renderRow(row, false))}`
+      : "";
+    const blockedSection = blocked.length
+      ? html`<h3>Changed here and upstream (${blocked.length})</h3>
+          <p class="muted" style="margin: 0 14px 8px;">
+            These were edited locally. Updating would overwrite those edits.
+          </p>
+          ${blocked.map((row) => this.renderRow(row, true))}`
+      : "";
+    const heldSection = held.length
+      ? html`<h3>Locked (${held.length})</h3>
+          <p class="muted" style="margin: 0 14px 8px;">
+            You locked these, so nothing here — not even Update all safe —
+            will overwrite them. Unlock one to let the catalog move it again.
+          </p>
+          ${held.map((row) => this.renderLockedRow(row))}`
+      : "";
 
     return html`
       ${this.renderFilters(ready.length + blocked.length + held.length, updates)}
@@ -241,27 +259,7 @@ export class UpdatesView extends LitElement {
               <button class="secondary" @click=${() => store.clearUpdateFilters()}>Clear filters</button>
             </empty-state>
           `
-        : html`
-            ${ready.length
-              ? html`<h3>Ready to update (${ready.length})</h3>
-                  ${ready.map((row) => this.renderRow(row, false))}`
-              : ""}
-            ${blocked.length
-              ? html`<h3>Changed here and upstream (${blocked.length})</h3>
-                  <p class="muted" style="margin: 0 14px 8px;">
-                    These were edited locally. Updating would overwrite those edits.
-                  </p>
-                  ${blocked.map((row) => this.renderRow(row, true))}`
-              : ""}
-            ${held.length
-              ? html`<h3>Locked (${held.length})</h3>
-                  <p class="muted" style="margin: 0 14px 8px;">
-                    You locked these, so nothing here — not even Update all safe —
-                    will overwrite them. Unlock one to let the catalog move it again.
-                  </p>
-                  ${held.map((row) => this.renderLockedRow(row))}`
-              : ""}
-          `}
+        : html`${readySection}${blockedSection}${heldSection}`}
     `;
   }
 

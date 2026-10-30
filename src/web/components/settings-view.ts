@@ -28,7 +28,7 @@ export class SettingsView extends LitElement {
     super.disconnectedCallback();
   }
 
-  static override styles = [
+  static override readonly styles = [
     sharedStyles,
     css`
       :host {
@@ -199,7 +199,7 @@ export class SettingsView extends LitElement {
                 .checked=${clients.has(option.id)}
                 ?disabled=${store.loading}
                 @change=${(event: Event) =>
-                  void this.toggleClient(option.id, (event.target as HTMLInputElement).checked)}
+                  this.toggleClient(option.id, (event.target as HTMLInputElement).checked)}
               />
               <span>
                 <strong>${option.label}</strong><br />

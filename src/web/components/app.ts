@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit";
+import type { BrowseSummary } from "../../common/types";
 import { pluralise } from "../logic";
 import { router } from "../registrations";
 import { store } from "../store";
@@ -48,7 +49,7 @@ export class AiManagerApp extends LitElement {
     super.disconnectedCallback();
   }
 
-  static override styles = [
+  static override readonly styles = [
     sharedStyles,
     css`
       :host {
@@ -197,6 +198,19 @@ export class AiManagerApp extends LitElement {
     `,
   ];
 
+  private renderSummary(summary: BrowseSummary | undefined) {
+    if (!summary) {
+      return "";
+    }
+    const driftClass = summary.drift ? "warn" : "";
+    const updatesClass = summary.updates ? "info" : "";
+    return html`
+      <span class="stat"><b>${summary.selected}</b> selected</span>
+      <span class="stat ${driftClass}"><b>${summary.drift}</b> need attention</span>
+      <span class="stat ${updatesClass}"><b>${summary.updates}</b> updates</span>
+    `;
+  }
+
   override render() {
     const browse = store.browse;
     const summary = browse?.summary;
@@ -212,13 +226,7 @@ export class AiManagerApp extends LitElement {
             ? html`<span class="repo">· ${store.bootstrap.WorkspaceName}</span>`
             : ""}
           <span class="grow"></span>
-          ${summary
-            ? html`
-                <span class="stat"><b>${summary.selected}</b> selected</span>
-                <span class="stat ${summary.drift ? "warn" : ""}"><b>${summary.drift}</b> need attention</span>
-                <span class="stat ${summary.updates ? "info" : ""}"><b>${summary.updates}</b> updates</span>
-              `
-            : ""}
+          ${this.renderSummary(summary)}
           <button class="ghost" title="Refresh" ?disabled=${store.loading}
             @click=${() => void store.refreshAsync(false)}>Refresh</button>
           <button class="secondary" ?disabled=${store.loading} @click=${() => void store.sync()}>Sync</button>

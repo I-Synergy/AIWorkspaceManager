@@ -4,7 +4,6 @@ import { filterInstalled, groupInstalled, isAttention, pickState, pluralise, tog
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
 import { kindIcon, lockIcon } from "./parts";
-import "./parts";
 
 /**
  * Installed: what this repository actually has, grouped by state.
@@ -26,7 +25,7 @@ export class InstalledView extends LitElement {
     super.disconnectedCallback();
   }
 
-  static override styles = [
+  static override readonly styles = [
     sharedStyles,
     css`
       :host {
@@ -161,9 +160,12 @@ export class InstalledView extends LitElement {
     const groups = groupInstalled(filtered);
     const attention = filtered.filter((item) => isAttention(item.status)).length;
     const pending = filtered.filter((item) => item.status === "not-installed").length;
-    const health = attention > 0
-      ? `${attention} need attention`
-      : pending > 0 ? `${pending} not materialised` : "all in sync";
+    let health = "all in sync";
+    if (attention > 0) {
+      health = `${attention} need attention`;
+    } else if (pending > 0) {
+      health = `${pending} not materialised`;
+    }
     const deselectedOnDisk = browse.items.filter(
       (item) => !item.selected && item.installed).length;
 
@@ -173,6 +175,11 @@ export class InstalledView extends LitElement {
     const count = filtered.length === installed.length
       ? pluralise(installed.length, "item")
       : `${filtered.length} of ${pluralise(installed.length, "item")}`;
+    const pruneButton = deselectedOnDisk > 0
+      ? html`<button class="danger ghost" ?disabled=${store.loading}
+          title="Deletes files for items no longer selected"
+          @click=${() => void store.prune()}>Prune ${deselectedOnDisk}</button>`
+      : "";
 
     return html`
       ${this.renderFilters(filtered.length)}
@@ -201,11 +208,7 @@ export class InstalledView extends LitElement {
           : html`
               <span class="mode">materialize: ${browse.materialize}</span>
               <button class="secondary" ?disabled=${store.loading} @click=${() => void store.sync()}>Sync</button>
-              ${deselectedOnDisk > 0
-                ? html`<button class="danger ghost" ?disabled=${store.loading}
-                    title="Deletes files for items no longer selected"
-                    @click=${() => void store.prune()}>Prune ${deselectedOnDisk}</button>`
-                : ""}
+              ${pruneButton}
             `}
       </div>
       ${filtered.length === 0

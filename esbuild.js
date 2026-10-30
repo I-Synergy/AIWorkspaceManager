@@ -37,9 +37,7 @@ const cssConfig = {
 };
 
 (async () => {
-  for (const config of [extensionConfig, webConfig, cssConfig]) {
-    await build(config);
-  }
+  await Promise.all([extensionConfig, webConfig, cssConfig].map((config) => build(config)));
   console.log("build complete");
 })().catch((error) => {
   process.stderr.write(error.stderr ?? String(error));

@@ -28,10 +28,10 @@ const { values, positionals } = parseArgs({
 
 const dryRun = values["dry-run"];
 const bumpArg = positionals[0] || "patch";
-const validBumps = ["patch", "minor", "major"];
-const isExplicitVersion = !validBumps.includes(bumpArg) && /^\d+\.\d+\.\d+$/.test(bumpArg);
+const validBumps = new Set(["patch", "minor", "major"]);
+const isExplicitVersion = !validBumps.has(bumpArg) && /^\d+\.\d+\.\d+$/.test(bumpArg);
 
-if (!validBumps.includes(bumpArg) && !isExplicitVersion) {
+if (!validBumps.has(bumpArg) && !isExplicitVersion) {
   console.error(`Invalid version argument: "${bumpArg}"`);
   console.error("Usage: node tools/release.mjs [patch|minor|major|X.Y.Z] [--dry-run]");
   process.exit(1);
@@ -39,16 +39,10 @@ if (!validBumps.includes(bumpArg) && !isExplicitVersion) {
 
 // -- Helpers --
 
-const isWindows = process.platform === "win32";
-
 function run(cmd, args, opts = {}) {
-  // On Windows, npm is a .cmd script and requires shell:true to execute.
-  // git handles its own quoting and must NOT use shell:true (it splits args on spaces).
-  const shell = isWindows && cmd === "npm";
   return execFileSync(cmd, args, {
     cwd: ROOT,
     encoding: "utf-8",
-    shell,
     ...opts,
   }).trim();
 }
@@ -156,7 +150,7 @@ if (dryRun) {
   }
 
   console.log("\nActions that would be taken:");
-  console.log(`  1. npm version ${isExplicitVersion ? newVersion : bumpArg} --no-git-tag-version`);
+  console.log("  1. Update package.json and package-lock.json");
   console.log("  2. Update CHANGELOG.md");
   console.log("  3. Write RELEASE_NOTES.md");
   console.log(`  4. git commit -m "chore: release ${tag}"`);
@@ -172,9 +166,26 @@ console.log(`Releasing ${currentVersion} -> ${newVersion}\n`);
 // 1. Bump version in package.json + package-lock.json (skip if already at target)
 if (currentVersion !== newVersion) {
   console.log("Bumping version...");
-  run("npm", ["version", isExplicitVersion ? newVersion : bumpArg, "--no-git-tag-version"]);
+  writeVersion(newVersion);
 } else {
   console.log(`Version already at ${newVersion}, skipping bump.`);
+}
+
+function writeVersion(version) {
+  const manifest = JSON.parse(readFileSync(pkgPath, "utf-8"));
+  manifest.version = version;
+  writeFileSync(pkgPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+
+  const lockPath = join(ROOT, "package-lock.json");
+  if (!existsSync(lockPath)) {
+    return;
+  }
+  const lock = JSON.parse(readFileSync(lockPath, "utf-8"));
+  lock.version = version;
+  if (lock.packages && lock.packages[""]) {
+    lock.packages[""].version = version;
+  }
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf-8");
 }
 
 // 2. Update CHANGELOG.md

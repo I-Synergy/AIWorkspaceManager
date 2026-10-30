@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Type check
         run: npm run compile
@@ -35,7 +35,7 @@ jobs:
 
       - name: Resolver tests
         run: |
-          pip install -r requirements-dev.txt
+          pip install --only-binary :all: -r requirements-dev.txt
           npm run test:resolver
 
       - name: Build
@@ -74,7 +74,7 @@ jobs:
           node-version: lts/*
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build
         run: npm run vscode:prepublish
@@ -91,7 +91,7 @@ jobs:
 
       - name: Publish to VS Code Marketplace
         if: steps.release_gate.outputs.publish == 'true'
-        run: npx --yes @vscode/vsce publish --no-dependencies
+        run: npx --yes --ignore-scripts @vscode/vsce publish --no-dependencies
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
@@ -109,11 +109,11 @@ jobs:
 
       - name: Package .vsix
         if: steps.release_gate.outputs.publish == 'true'
-        run: npx --yes @vscode/vsce package --no-dependencies --out aiworkspacemanager.vsix
+        run: npx --yes --ignore-scripts @vscode/vsce package --no-dependencies --out aiworkspacemanager.vsix
 
       - name: Create GitHub Release
         if: steps.release_gate.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           files: aiworkspacemanager.vsix

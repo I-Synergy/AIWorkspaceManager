@@ -10,7 +10,7 @@
  */
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -27,6 +27,22 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
 };
+
+function safeFile(root, relative) {
+  const base = resolve(root);
+  const file = resolve(base, relative);
+  return file === base || file.startsWith(base + sep) ? file : null;
+}
+
+async function serveFrom(res, root, relative) {
+  const file = safeFile(root, relative);
+  if (!file) {
+    res.writeHead(403, { "content-type": "text/plain" });
+    res.end("forbidden");
+    return;
+  }
+  return serve(res, file);
+}
 
 async function serve(res, file) {
   try {
@@ -48,12 +64,12 @@ createServer(async (req, res) => {
     return serve(res, join(TOOLS, "index.html"));
   }
   if (url.startsWith("/dist/")) {
-    return serve(res, join(DIST, url.slice("/dist/".length)));
+    return serveFrom(res, DIST, url.slice("/dist/".length));
   }
   if (url.startsWith("/fixtures/")) {
-    return serve(res, join(FIXTURES, url.slice("/fixtures/".length)));
+    return serveFrom(res, FIXTURES, url.slice("/fixtures/".length));
   }
-  return serve(res, join(TOOLS, url.slice(1)));
+  return serveFrom(res, TOOLS, url.slice(1));
 }).listen(PORT, "127.0.0.1", () => {
   console.log(`AI Workspace Manager dev harness: http://localhost:${PORT}`);
   console.log(`  light theme: http://localhost:${PORT}/?theme=light`);

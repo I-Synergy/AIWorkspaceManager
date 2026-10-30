@@ -609,7 +609,8 @@ def test_the_instructions_follow_the_installed_items(project, tmp_path):
     assert "# AGENTS" in copilot
     assert "## Project Context" in copilot
     assert "| Missing |" not in copilot
-    assert "| Alpha |" in copilot and "`.ai/patterns/x.md`" in copilot
+    assert "| Alpha |" in copilot
+    assert "`.ai/patterns/x.md`" in copilot
 
     before = (project / "AGENTS.md").read_text(encoding="utf-8")
     catalog.update_instruction_docs()
