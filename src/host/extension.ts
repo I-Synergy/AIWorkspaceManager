@@ -101,11 +101,12 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   /**
-   * A brand-new folder gets the whole template, not just a manifest: the
-   * resolver and vocabulary under `.ai/`, the supporting folders (plans,
-   * patterns, reference, checklists, project, …), the platform mirrors, and a
-   * manifest. Nothing project-owned is overwritten. Every API call waits for
-   * this, so the first browse already sees the setup.
+   * A new folder gets the resolver and vocabulary under `.ai/`, the agent
+   * configuration, the platform mirrors and a manifest — plus the supporting
+   * folders (plans, patterns, reference, checklists, project, …) on first
+   * setup. Existing projects keep their own files, and legacy state files are
+   * cleaned up here so an upgrade is pruned even without a sync. Nothing
+   * project-owned is overwritten.
    */
   const ensureSetup = async (): Promise<void> => {
     if (!workspaceRoot()) {
@@ -117,9 +118,11 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     const copied = result.value.tooling.copied.length + result.value.scaffold.copied.length;
-    if (copied > 0 || result.value.created) {
+    const cleaned = result.value.legacyRemoved?.length ?? 0;
+    if (copied > 0 || cleaned > 0 || result.value.created) {
       console.log(`AI Workspace Manager: set up ${result.value.path} `
-        + `(${result.value.selected} selected, ${copied} file(s) copied).`);
+        + `(${result.value.selected} selected, ${copied} file(s) copied`
+        + `${cleaned ? `, ${cleaned} old state file(s) cleaned` : ""}).`);
     }
   };
 

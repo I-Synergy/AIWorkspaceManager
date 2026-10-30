@@ -149,11 +149,17 @@ export function createHostAPI(context: HostApiContext): HostAPI {
       });
     },
 
-    async applyPreset(params) {
+    async addPreset(params) {
       return guard(async () => {
-        await cli(["init", "--preset", params.Name, "--force"]);
+        // Additive: `init --preset` would replace the whole selection, which
+        // made applying a second preset deselect the first one's items.
+        await cli(["preset", "add", params.Name]);
         return cli(["sync"]);
       });
+    },
+
+    async setLocked(params) {
+      return guard(() => cli([params.Locked ? "lock" : "unlock", ...params.Ids]));
     },
 
     async install(params) {
@@ -189,6 +195,18 @@ export function createHostAPI(context: HostApiContext): HostAPI {
 
     async rebuildIndex() {
       return guard(() => cli(["index", "--compact"]));
+    },
+
+    async addScaffold() {
+      return guard(() => cli(["scaffold", "--json"]));
+    },
+
+    async setClients(params) {
+      return guard(async () => {
+        await cli(["clients", "--set", ...params.Clients]);
+        // Reconcile junctions, Copilot instructions and client folders.
+        return cli(["sync"]);
+      });
     },
 
     async openFile(params) {

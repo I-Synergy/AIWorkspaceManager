@@ -80,6 +80,13 @@ def write_manifest(root: Path, source: Path) -> None:
     }, indent=2))
 
 
+def select_skills(root: Path, *skills: str) -> None:
+    path = root / ".ai" / "ai.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["skills"] = list(skills)
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
 def run(*argv):
     args = catalog.build_parser().parse_args([str(value) for value in argv])
     try:
@@ -285,12 +292,19 @@ def test_the_vocabulary_lands_under_ai_not_the_repository_root(project, tmp_path
     assert isinstance(presets, dict)
 
 
-def test_sync_copies_the_supporting_ai_folders(project, tmp_path):
+def test_sync_does_not_seed_the_supporting_ai_folders(project, tmp_path):
     source = make_template(tmp_path)
     write_manifest(project, source)
 
     assert run("sync") == 0
 
+    assert not (project / ".ai" / "plans" / "example-plan.md").exists()
+    assert not (project / ".ai" / "reference").exists()
+    assert not (project / ".ai" / "checklists").exists()
+    assert not (project / ".ai" / "session-context.md").exists()
+
+    # Explicit setup is still available.
+    assert run("scaffold") == 0
     assert (project / ".ai" / "plans" / "example-plan.md").is_file()
     assert (project / ".ai" / "project" / "tech-stack.md").is_file()
     assert (project / ".ai" / "reference" / "standards.md").is_file()
@@ -303,8 +317,8 @@ def test_project_scaffold_is_created_once_and_never_overwritten(project, tmp_pat
     write_manifest(project, source)
     write(project / ".ai" / "reference" / "standards.md", "# our standards\n")
 
-    assert run("sync") == 0
-    assert run("update", "--apply", "--tooling") == 0
+    assert run("scaffold") == 0
+    assert run("scaffold") == 0
 
     assert (project / ".ai" / "reference" / "standards.md").read_text(encoding="utf-8") \
         == "# our standards\n"
@@ -312,7 +326,29 @@ def test_project_scaffold_is_created_once_and_never_overwritten(project, tmp_pat
     assert (project / ".ai" / "plans" / "example-plan.md").is_file()
 
 
-def test_bootstrap_sets_up_the_manifest_tooling_and_scaffold(project, tmp_path, capsys):
+def test_scaffold_only_adds_missing_files(project, tmp_path, capsys):
+    source = make_template(tmp_path)
+    write_manifest(project, source)
+    assert run("scaffold") == 0
+
+    edited = project / ".ai" / "reference" / "standards.md"
+    edited.write_text("# our standards\n", encoding="utf-8")
+    deleted = project / ".ai" / "checklists" / "pre-submission.md"
+    deleted.unlink()
+    mine = project / ".ai" / "reference" / "mine.md"
+    write(mine, "# mine\n")
+
+    payload = run_json(capsys, "scaffold", "--json")
+
+    # Existing files are never touched or removed.
+    assert edited.read_text(encoding="utf-8") == "# our standards\n"
+    assert mine.read_text(encoding="utf-8") == "# mine\n"
+    # Only the absent file is written back.
+    assert payload["copied"] == [".ai/checklists/pre-submission.md"]
+    assert deleted.is_file()
+
+
+def test_bootstrap_keeps_an_existing_project_slim(project, tmp_path, capsys):
     source = make_template(tmp_path)
     write_manifest(project, source)
 
@@ -322,7 +358,8 @@ def test_bootstrap_sets_up_the_manifest_tooling_and_scaffold(project, tmp_path, 
     assert payload["created"] is False
     assert (project / ".ai" / "scripts" / "catalog.py").is_file()
     assert (project / ".ai" / "catalog" / "presets.json").is_file()
-    assert (project / ".ai" / "plans" / "example-plan.md").is_file()
+    # Activation must not re-seed ~70 scaffold files into an existing project.
+    assert not (project / ".ai" / "plans" / "example-plan.md").exists()
     assert not (project / "catalog").exists()
 
 
@@ -656,3 +693,150 @@ def test_legacy_markers_are_migrated_on_regeneration(project, tmp_path):
     again = catalog.update_instruction_docs()
     assert again["AGENTS.md"] == "unchanged"
     assert again[".github/copilot-instructions.md"] == "unchanged"
+
+
+# ─── Local state and upgrade cleanup ────────────────────────────────────────
+
+def _one_skill(source: Path, name: str = "alpha") -> None:
+    write(source / ".ai" / "skills" / name / "SKILL.md",
+          f"---\nname: {name}\ndescription: {name}\n---\n\n{name}\n")
+
+
+def test_sync_never_writes_install_markers_and_cleans_legacy_ones(project, tmp_path):
+    source = make_template(tmp_path)
+    _one_skill(source)
+    write_manifest(project, source)
+    select_skills(project, "alpha")
+
+    assert run("sync") == 0
+    target = project / ".ai" / "skills" / "alpha"
+    assert target.is_dir()
+    assert not (target / ".ai-installed.json").exists()
+    assert not (project / ".ai" / "installed").exists()
+
+    # Markers from a previous version are redundant with ai.lock.json.
+    write(target / ".ai-installed.json", "{}")
+    write(project / ".ai" / "installed" / "template__alpha.skill.json", "{}")
+    assert run("sync", "--check") == 1
+
+    assert run("sync") == 0
+    assert not (target / ".ai-installed.json").exists()
+    assert not (project / ".ai" / "installed" / "template__alpha.skill.json").exists()
+
+
+def test_the_index_is_local_and_the_old_copy_is_cleaned(project, tmp_path):
+    source = make_template(tmp_path)
+    write_manifest(project, source)
+    assert run("sync") == 0
+
+    assert run("index") == 0
+    assert (project / ".ai" / "tmp" / "catalog-index.json").is_file()
+    assert not (project / ".ai" / "catalog" / "index.json").exists()
+
+    # The old committed location is removed on the next sync.
+    write(project / ".ai" / "catalog" / "index.json",
+          json.dumps({"indexVersion": 1, "items": []}))
+    assert run("sync", "--check") == 1
+    assert run("sync") == 0
+    assert not (project / ".ai" / "catalog" / "index.json").exists()
+
+
+def test_bootstrap_cleans_legacy_state_without_a_sync(project, tmp_path, capsys):
+    source = make_template(tmp_path)
+    _one_skill(source)
+    write_manifest(project, source)
+    select_skills(project, "alpha")
+    assert run("sync") == 0
+
+    target = project / ".ai" / "skills" / "alpha"
+    write(target / ".ai-installed.json", "{}")
+    write(project / ".ai" / "installed" / "template__alpha.skill.json", "{}")
+    write(project / ".ai" / "catalog" / "index.json",
+          json.dumps({"indexVersion": 1, "items": []}))
+
+    payload = run_json(capsys, "bootstrap", "--json")
+
+    assert sorted(payload["legacyRemoved"]) == [
+        ".ai/catalog/index.json",
+        ".ai/installed/template__alpha.skill.json",
+        ".ai/skills/alpha/.ai-installed.json",
+    ]
+    assert not (target / ".ai-installed.json").exists()
+    assert not (project / ".ai" / "catalog" / "index.json").exists()
+    assert not (project / ".ai" / "installed").exists()
+
+
+def test_init_on_a_new_project_seeds_the_supporting_files(project, tmp_path):
+    source = make_template(tmp_path)
+    _one_skill(source)
+
+    assert run("init", "--ids", "alpha", "--path", str(source)) == 0
+
+    assert (project / ".ai" / "plans" / "example-plan.md").is_file()
+    assert (project / ".ai" / "project" / "tech-stack.md").is_file()
+    assert (project / ".ai" / "reference" / "standards.md").is_file()
+    assert (project / ".ai" / "checklists" / "pre-submission.md").is_file()
+    assert (project / ".ai" / "session-context.md").is_file()
+
+
+def test_sync_seeds_the_supporting_files_only_without_a_manifest(
+        project, tmp_path, monkeypatch):
+    source = make_template(tmp_path)
+    monkeypatch.setattr(catalog, "starter_manifest", lambda: {
+        "version": 1,
+        "sources": {"template": {"repo": "owner/repo", "ref": "main",
+                                 "path": str(source)}},
+        "skills": [], "agents": [], "instructions": [], "plugins": [], "hooks": [],
+        "materialize": "copy",
+        "exclude": [], "locked": [],
+    })
+
+    assert run("sync") == 0
+    assert (project / ".ai" / "plans" / "example-plan.md").is_file()
+
+    # Once a manifest exists, sync leaves the supporting files alone.
+    (project / ".ai" / "ai.json").write_text(json.dumps({
+        "version": 1,
+        "sources": {"template": {"repo": "owner/repo", "ref": "main",
+                                 "path": str(source)}},
+        "skills": [], "agents": [], "materialize": "copy",
+    }), encoding="utf-8")
+    (project / ".ai" / "plans" / "example-plan.md").unlink()
+    assert run("sync") == 0
+    assert not (project / ".ai" / "plans" / "example-plan.md").exists()
+
+
+def test_the_copilot_copy_uses_github_paths_not_claude(project, tmp_path):
+    source = make_template(tmp_path)
+    write_manifest(project, source)
+    write(project / "AGENTS.md",
+          "# AGENTS\n\nRead `.ai/session-context.md` first.\n\n"
+          "Skills live in `.claude/skills/alpha/SKILL.md`; settings live in "
+          "`.claude/settings.json`.\n")
+    write(project / ".github" / "copilot-instructions.md",
+          "## Project Context\n\nSee `.claude/agents/lead.md` and `.claude/settings.json`.\n")
+
+    catalog.update_instruction_docs()
+
+    copilot = (project / ".github" / "copilot-instructions.md").read_text(encoding="utf-8")
+    assert ".claude/skills" not in copilot
+    assert ".claude/agents" not in copilot
+    assert ".github/skills/alpha/SKILL.md" in copilot
+    assert ".github/agents/lead.md" in copilot
+    # The Claude settings file is still a Claude path, even in the Copilot copy.
+    assert ".claude/settings.json" in copilot
+
+
+def test_the_bundled_release_validator_wins_over_an_old_template_copy(
+        project, tmp_path, monkeypatch):
+    source = make_template(tmp_path)
+    write(source / ".ai" / "tests" / "validate-release.py", "# old validator\n")
+    write_manifest(project, source)
+    bundle = tmp_path / "bundle"
+    write(bundle / ".ai" / "tests" / "validate-release.py", "# fixed validator\n")
+    monkeypatch.setenv("CATALOG_TOOLING", str(bundle))
+
+    assert run("bootstrap") == 0
+
+    assert (project / ".ai" / "tests" / "validate-release.py").read_text(
+        encoding="utf-8") == "# fixed validator\n"

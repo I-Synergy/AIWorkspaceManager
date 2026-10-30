@@ -1,8 +1,15 @@
 import { LitElement, css, html } from "lit";
+import type { ClientName } from "../../common/types";
 import { releaseSummary, sourceRefLabel } from "../logic";
 import { hostApi } from "../registrations";
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
+
+const CLIENT_OPTIONS: { id: ClientName; label: string; detail: string }[] = [
+  { id: "claude", label: "Claude Code", detail: ".claude/skills, agents, commands and instructions" },
+  { id: "copilot", label: "GitHub Copilot", detail: ".github/skills, agents, prompts, instructions and copilot-instructions.md" },
+  { id: "reasonix", label: "Reasonix Code", detail: ".reasonix/skills and .reasonix/agents" },
+];
 
 /** Settings: the knobs that are not per-item, plus the maintenance actions. */
 export class SettingsView extends LitElement {
@@ -53,6 +60,25 @@ export class SettingsView extends LitElement {
       .row input {
         flex: 1;
       }
+      .clients {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .client {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        font-size: 12px;
+      }
+      .client input {
+        margin-top: 2px;
+        accent-color: var(--vscode-focusBorder);
+      }
+      .client .detail {
+        color: var(--vscode-descriptionForeground);
+        font-size: 11.5px;
+      }
       .row textarea {
         flex: 1;
         font: inherit;
@@ -94,10 +120,21 @@ export class SettingsView extends LitElement {
     `,
   ];
 
+  private toggleClient(client: ClientName, enabled: boolean): void {
+    const selected = new Set<ClientName>(store.browse?.clients ?? ["claude"]);
+    if (enabled) {
+      selected.add(client);
+    } else {
+      selected.delete(client);
+    }
+    void store.setClients(CLIENT_OPTIONS.map((option) => option.id).filter((id) => selected.has(id)));
+  }
+
   override render() {
     const bootstrap = store.bootstrap;
     const sources = store.browse?.sources ?? [];
     const releases = new Map((store.releases?.sources ?? []).map((row) => [row.id, row]));
+    const clients = new Set<ClientName>(store.browse?.clients ?? ["claude"]);
     return html`
       <section>
         <h2>Interpreter</h2>
@@ -143,6 +180,33 @@ export class SettingsView extends LitElement {
           ${store.project
             ? html`<span class="muted mono">detected: ${store.project.detectedName}</span>`
             : ""}
+        </div>
+      </section>
+
+      <section>
+        <h2>Clients</h2>
+        <p>
+          Each client gets platform folders linked to the same <code>.ai/</code> content.
+          Disabling a client removes only its junctions and generated Copilot instructions;
+          real directories and <code>.github/workflows</code> are never touched. A missing
+          <code>clients</code> field keeps every client for older projects.
+        </p>
+        <div class="clients">
+          ${CLIENT_OPTIONS.map((option) => html`
+            <label class="client">
+              <input
+                type="checkbox"
+                .checked=${clients.has(option.id)}
+                ?disabled=${store.loading}
+                @change=${(event: Event) =>
+                  void this.toggleClient(option.id, (event.target as HTMLInputElement).checked)}
+              />
+              <span>
+                <strong>${option.label}</strong><br />
+                <span class="detail">${option.detail}</span>
+              </span>
+            </label>
+          `)}
         </div>
       </section>
 
@@ -202,11 +266,15 @@ export class SettingsView extends LitElement {
         <h2>Maintenance</h2>
         <div class="actions">
           <button class="secondary" ?disabled=${store.loading}
-            title="Creates .ai/ai.json, the resolver/vocabulary under .ai/, and any missing template folders (plans, patterns, reference, …)"
+            title="Creates .ai/ai.json, the resolver/vocabulary under .ai/, and — on a new project — the template folders (plans, patterns, reference, …)"
             @click=${() => void store.bootstrapAsync()}>Set up this repository from the template</button>
           <button class="secondary" ?disabled=${store.loading}
             @click=${() => void store.sync()}>Sync selection</button>
           <button class="ghost" ?disabled=${store.loading}
+            title="Copies any missing template .ai/ folders and files (patterns, reference, tests, plans, …). Existing files are never changed or removed."
+            @click=${() => void store.addScaffold()}>Add template folders</button>
+          <button class="ghost" ?disabled=${store.loading}
+            title="Writes a local index to .ai/tmp (gitignored); the committed vocabulary stays under .ai/catalog"
             @click=${() => void store.rebuildIndex()}>Rebuild catalog index</button>
           <button class="ghost" ?disabled=${store.loading}
             @click=${() => void store.writeNotice()}>Write NOTICE.md</button>

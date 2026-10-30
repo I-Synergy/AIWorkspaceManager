@@ -59,17 +59,19 @@ test("idsToInstall is exactly the unselected items", () => {
   assert.deepEqual(logic.idsToInstall(items), ["template:alpha", "template:b"]);
 });
 
-test("groupInstalled splits attention, pending and in-sync", () => {
+test("groupInstalled splits attention, pending, locked and in-sync", () => {
   const items = [
     item({ selected: true, status: "ok" }),
     item({ id: "template:b", displayId: "b", selected: true, status: "missing" }),
     item({ id: "template:c", displayId: "c", selected: true, status: "not-installed" }),
-    item({ id: "template:d", displayId: "d", selected: false }),
+    item({ id: "template:d", displayId: "d", selected: true, status: "locked" }),
+    item({ id: "template:e", displayId: "e", selected: false }),
   ];
   const groups = logic.groupInstalled(items);
-  assert.deepEqual(groups.map((g) => g.key), ["attention", "pending", "synced"]);
+  assert.deepEqual(groups.map((g) => g.key), ["attention", "pending", "locked", "synced"]);
   assert.deepEqual(groups[0].items.map((i) => i.displayId), ["b"]);
-  assert.deepEqual(groups[2].items.map((i) => i.displayId), ["alpha"]);
+  assert.deepEqual(groups[2].items.map((i) => i.displayId), ["d"]);
+  assert.deepEqual(groups[3].items.map((i) => i.displayId), ["alpha"]);
 });
 
 test("groupInstalled omits empty groups", () => {
@@ -82,6 +84,7 @@ test("status labels separate deselected from gone upstream", () => {
   assert.equal(logic.statusLabel("removed-upstream", false), "deselected");
   assert.equal(logic.statusLabel("removed-upstream", true), "gone upstream");
   assert.equal(logic.statusLabel("upstream-changed"), "update");
+  assert.equal(logic.statusLabel("locked"), "locked");
 });
 
 test("status classes drive the pill colours", () => {
@@ -89,21 +92,41 @@ test("status classes drive the pill colours", () => {
   assert.equal(logic.statusClass("both"), "danger");
   assert.equal(logic.statusClass("local-modified"), "warn");
   assert.equal(logic.statusClass("upstream-changed"), "update");
+  assert.equal(logic.statusClass("locked"), "available");
 });
 
-test("presetDelta counts both directions", () => {
-  assert.deepEqual(logic.presetDelta({ name: "p", description: "", skills: 5, agents: 1 }, 3, 3),
-    { add: 2, remove: 2, label: "2 to add · 2 to remove" });
-  assert.equal(logic.presetDelta({ name: "p", description: "", skills: 2, agents: 2 }, 2, 2).label, "no change");
-  assert.equal(logic.presetDelta({ name: "p", description: "", skills: 9, agents: 1 }, 0, 0).add, 10);
-  assert.equal(logic.presetDelta({ name: "p", description: "", skills: 1, agents: 0 }, 4, 4).label,
-    "7 to remove");
+test("presetDelta only counts what adding the preset would change", () => {
+  const card = {
+    name: "p", description: "", skills: 3, agents: 1,
+    ids: ["template:a", "template:b", "template:c", "template:lead"],
+  };
+  assert.deepEqual(logic.presetDelta(card, new Set(["template:a"])),
+    { add: 3, label: "3 to add" });
+  // Extra selected items are kept: presets compose, so nothing is "to remove".
+  assert.equal(logic.presetDelta(card, new Set([...card.ids, "template:extra"])).label,
+    "already selected");
+  // A swapped set has the same count but still adds the missing id.
+  assert.equal(logic.presetDelta(card, new Set(["template:a", "template:b", "template:c", "template:other"])).add, 1);
+});
+
+test("presetDelta falls back to counts for older resolvers", () => {
+  assert.equal(logic.presetDelta(
+    { name: "p", description: "", skills: 9, agents: 1 },
+    new Set(),
+    { skills: 0, agents: 0 },
+  ).add, 10);
+  assert.equal(logic.presetDelta(
+    { name: "p", description: "", skills: 2, agents: 2 },
+    new Set(["template:a"]),
+    { skills: 2, agents: 2 },
+  ).label, "already selected");
 });
 
 test("isAttention ignores healthy and merely-available items", () => {
   assert.equal(logic.isAttention("ok"), false);
   assert.equal(logic.isAttention("available"), false);
   assert.equal(logic.isAttention("not-installed"), false);
+  assert.equal(logic.isAttention("locked"), false);
   for (const status of ["missing", "local-modified", "upstream-changed", "both", "removed-upstream"]) {
     assert.equal(logic.isAttention(status), true, status);
   }
@@ -282,6 +305,8 @@ test("filterInstalled filters by kind, source, query and health", () => {
     owned({ id: "awesome-copilot:zeta", displayId: "zeta", name: "zeta",
       path: "skills/zeta", description: "zeta", source: "awesome-copilot",
       status: "upstream-changed" }),
+    owned({ id: "template:frozen", displayId: "frozen", name: "frozen",
+      path: ".ai/skills/frozen", description: "frozen", status: "locked" }),
   ];
   const f = (over) => logic.filterInstalled(items, { ...filters, ...over }).map((i) => i.displayId);
   assert.deepEqual(f({ kind: "agent" }), ["arch"]);
@@ -289,6 +314,7 @@ test("filterInstalled filters by kind, source, query and health", () => {
   assert.deepEqual(f({ query: "ZETA" }), ["zeta"]);
   assert.deepEqual(f({ state: "in-sync" }), ["alpha"]);
   assert.deepEqual(f({ state: "needs-attention" }), ["zeta"]);
+  assert.deepEqual(f({ state: "locked" }), ["frozen"]);
   assert.deepEqual(f({ state: "pending" }), ["arch"]);
 });
 

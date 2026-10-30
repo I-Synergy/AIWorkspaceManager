@@ -3,7 +3,7 @@ import type { CatalogItem } from "../../common/types";
 import { filterInstalled, groupInstalled, isAttention, pickState, pluralise, toggleAll } from "../logic";
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
-import { kindIcon } from "./parts";
+import { kindIcon, lockIcon } from "./parts";
 import "./parts";
 
 /**
@@ -88,7 +88,7 @@ export class InstalledView extends LitElement {
       }
       .row {
         display: grid;
-        grid-template-columns: 20px 16px minmax(120px, 240px) 1fr auto auto;
+        grid-template-columns: 20px 16px minmax(120px, 240px) 1fr auto auto auto;
         gap: 10px;
         align-items: center;
         padding: 6px 14px;
@@ -122,6 +122,15 @@ export class InstalledView extends LitElement {
       }
       .row:hover button {
         opacity: 1;
+      }
+      /* Lock state is information, not a hover-only action. */
+      .row button.lock {
+        opacity: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 6px;
+        line-height: 0;
       }
     `,
   ];
@@ -263,6 +272,7 @@ export class InstalledView extends LitElement {
           <option value="all">Any state</option>
           <option value="in-sync">In sync</option>
           <option value="needs-attention">Needs attention</option>
+          <option value="locked">Locked</option>
           <option value="pending">Not materialised</option>
         </select>
         <select
@@ -298,6 +308,14 @@ export class InstalledView extends LitElement {
         <span class="path">${item.path}</span>
         ${item.status === "ok" ? html`<span></span>` : html`
           <state-pill .status=${item.status} .selected=${true}></state-pill>`}
+        <button class="ghost lock" ?disabled=${store.loading}
+          title=${item.locked
+            ? "Locked — click to unlock and follow the catalog again"
+            : "Lock this item so updates and sync never overwrite your edits"}
+          aria-label=${item.locked ? "Unlock item" : "Lock item"}
+          @click=${() => void store.setLocked([item.id], !item.locked)}>
+          ${lockIcon(item.locked)}
+        </button>
         <button class="ghost" ?disabled=${store.loading}
           @click=${() => void store.remove([item.id], true)}>Remove</button>
       </div>

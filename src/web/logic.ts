@@ -59,7 +59,7 @@ export function filterItems(items: CatalogItem[], filters: FilterState): Catalog
 
 /* ── installed filters ───────────────────────────────────────────────────── */
 
-export type InstalledState = "all" | "in-sync" | "needs-attention" | "pending";
+export type InstalledState = "all" | "in-sync" | "needs-attention" | "locked" | "pending";
 
 export interface InstalledFilters {
   query: string;
@@ -93,6 +93,9 @@ export function filterInstalled(
     if (filters.state === "in-sync" && item.status !== "ok") {
       return false;
     }
+    if (filters.state === "locked" && item.status !== "locked") {
+      return false;
+    }
     if (filters.state === "pending" && item.status !== "not-installed") {
       return false;
     }
@@ -110,6 +113,7 @@ export function groupInstalled(items: CatalogItem[]): InstalledGroup[] {
   const groups: InstalledGroup[] = [
     { key: "attention", label: "Needs attention", items: selected.filter((item) => isAttention(item.status)) },
     { key: "pending", label: "Selected, not materialised", items: selected.filter((item) => item.status === "not-installed") },
+    { key: "locked", label: "Locked", items: selected.filter((item) => item.status === "locked") },
     { key: "synced", label: "In sync", items: selected.filter((item) => item.status === "ok") },
   ];
   return groups.filter((group) => group.items.length > 0);
@@ -127,6 +131,8 @@ export function statusLabel(status: string, selected = true): string {
       return "missing";
     case "local-modified":
       return "modified here";
+    case "locked":
+      return "locked";
     case "both":
       return "conflict";
     case "upstream-changed":
@@ -147,6 +153,8 @@ export function statusClass(status: string): string {
     case "local-modified":
     case "missing":
       return "warn";
+    case "locked":
+      return "available";
     case "both":
       return "danger";
     default:
@@ -156,29 +164,26 @@ export function statusClass(status: string): string {
 
 export interface PresetDelta {
   add: number;
-  remove: number;
   label: string;
 }
 
 /**
- * Delta of a preset against what is installed now, counting items. The honest
- * summary a card can show without shipping every id to the webview.
+ * What adding this preset would change. Presets compose, so there is nothing
+ * to remove: items already selected stay selected. With ids from the resolver
+ * the count is exact; an older resolver only sent counts, so fall back to a
+ * per-kind upper bound rather than claiming nothing new.
  */
 export function presetDelta(
   card: PresetCard,
-  installedSkills: number,
-  installedAgents: number,
+  selectedIds: ReadonlySet<string>,
+  installed?: { skills: number; agents: number },
 ): PresetDelta {
-  const add = Math.max(0, card.skills - installedSkills) + Math.max(0, card.agents - installedAgents);
-  const remove = Math.max(0, installedSkills - card.skills) + Math.max(0, installedAgents - card.agents);
-  const parts: string[] = [];
-  if (add) {
-    parts.push(`${add} to add`);
-  }
-  if (remove) {
-    parts.push(`${remove} to remove`);
-  }
-  return { add, remove, label: parts.join(" · ") || "no change" };
+  const add = card.ids
+    ? card.ids.reduce((count, id) => count + (selectedIds.has(id) ? 0 : 1), 0)
+    : installed
+      ? Math.max(0, card.skills - installed.skills) + Math.max(0, card.agents - installed.agents)
+      : 0;
+  return { add, label: add ? `${add} to add` : "already selected" };
 }
 
 export function pluralise(count: number, singular: string, plural = `${singular}s`): string {

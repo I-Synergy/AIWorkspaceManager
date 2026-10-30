@@ -106,6 +106,7 @@ def test_pin_repoints_the_source_and_keeps_the_installed_selection(project, caps
     # The selection is frozen as explicit names, and a preset cannot expand it.
     assert manifest["skills"] == ["alpha", "beta"]
     assert "preset" not in manifest
+    assert "presets" not in manifest
     # A tree that already holds files is copied, never linked to the cache.
     assert manifest["materialize"] == "copy"
 

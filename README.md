@@ -50,10 +50,10 @@ hashes, and updates that are a diff against a pinned revision.
 | Surface | What it does |
 |---|---|
 | **Browse** | The whole catalog: search, filter by kind / source / state, detail pane with provenance. Tick rows that are not installed yet (already-installed rows are disabled — manage those in Installed) for a bulk install that works across filters, or install everything the current filter matches |
-| **Installed** | What this repo has, grouped by state — needs attention first. Search and filter by kind / source / health (in sync, needs attention, not materialised), tick rows to remove several at once, plus sync, per-item remove and prune for deselected leftovers |
+| **Installed** | What this repo has, grouped by state — needs attention first. Search and filter by kind / source / health (in sync, needs attention, not materialised), tick rows to remove several at once, plus sync, per-item **lock** (freeze edited content so update and sync never overwrite it), remove and prune for deselected leftovers |
 | **Updates** | Items whose catalog content moved upstream, with the four states (unchanged / upstream-changed / modified here / conflict) and *update all safe* — plus search and kind / source / ready-vs-conflict filters, and a banner when the pinned ref is older than the source's newest release tag |
-| **Presets** | Named selections with resolved counts and the delta against the current choice: fourteen domain presets, alphabetical (Architecture, Aspire, Books & writing, Design, Devops, .NET Core / MAUI / Web & Blazor / WinUI / WPF, Review, Security), with **Tools** at 13, **Minimal** at 14 and **Everything** last; drawing on all four repositories, dependencies resolved |
-| **Settings** | Interpreter, project name/intention, sources table (repo / ref / release / resolve / licence / hooks), maintenance actions |
+| **Presets** | Named selections that compose: adding one keeps every other preset and anything picked individually, and each card says exactly how many items it would add. Fourteen domain presets, alphabetical (Architecture, Aspire, Books & writing, Design, Devops, .NET Core / MAUI / Web & Blazor / WinUI / WPF, Review, Security), with **Tools** at 13, **Minimal** at 14 and **Everything** last; drawing on all four repositories, dependencies resolved |
+| **Settings** | Interpreter, project name/intention, **AI clients** (Claude Code default; Copilot and Reasonix opt-in), sources table (repo / ref / release / resolve / licence / hooks), maintenance actions |
 
 Plus a status-bar-style launcher view in the Explorer with a drift badge, and
 command-palette entries: Open, Select Skills and Agents, Check for Updates,
@@ -124,7 +124,15 @@ code --install-extension I-Synergy.aiworkspacemanager
 ```
 
 Open a folder and the extension sets up `.ai/` on first activation — the
-resolver, the vocabulary and the supporting project folders.
+resolver, the vocabulary and the agent configuration. A brand-new project always
+gets the template's supporting folders too (plans, patterns, reference, …).
+Existing files are never overwritten or removed; **Add template folders** /
+`catalog.py scaffold` copies only what is missing.
+
+New projects use **Claude Code by default**. Copilot and Reasonix are opt-in
+under **Settings → Clients**; each client gets junction folders over the same
+`.ai/` content, and disabling one removes only its junctions and generated
+instructions (never real project files or `.github/workflows`).
 
 ## Screenshots
 
@@ -145,7 +153,7 @@ resolver, the vocabulary and the supporting project folders.
   it cannot drift from what CI enforces (`sync --check`, `index --verify`).
 - **Loud about cost.** The resolver exists because 530 installed skills is
   noise. Presets are recommended, `Everything` is never the default but never hidden,
-  and the delta on every card says how many items it would add or remove.
+  and the delta on every card says exactly how many items it would add.
 - **Nothing destructive by default.** Removing edits `.ai/ai.json` only; files
   leave disk only through an explicit Prune, which says so on the button. Prune
   deletes every lock-recorded item not in the current selection, so run it
@@ -154,12 +162,19 @@ resolver, the vocabulary and the supporting project folders.
   uses newer kinds such as prompts.
 - **The template owns its resolver; the project owns everything else.**
   Setup writes the whole `.ai/scripts/` set (resolver, mirrors, hygiene,
-  migration, upgrade), the vocabulary under `.ai/catalog/`, and the supporting
-  `.ai/` folders, recording provenance in `.ai/tooling.json`. A file the
-  template no longer ships is filled from the extension's bundled copy.
-  Template files are refreshed only on an explicit update-to-release; a file the
-  project created, or a template file edited after install, is never overwritten
-  by a later update.
+  migration, upgrade), the vocabulary under `.ai/catalog/`, and the agent
+  configuration, recording provenance in `.ai/tooling.json`. A file the template
+  no longer ships is filled from the extension's bundled copy. Template files
+  are refreshed only on an explicit update-to-release; a file the project
+  created, or a template file edited after install, is never overwritten by a
+  later update. The supporting `.ai/` folders are created for a new project and
+  never overwritten or pruned afterwards; `scaffold` only fills in missing
+  files.
+- **State is two small JSON files.** `.ai/ai.json` is the selection;
+  `.ai/ai.lock.json` records what was materialised (id, ref, hash, path, mode).
+  Per-item marker files from older versions are no longer written and are
+  cleaned on the next sync. The generated catalog index is a local cache under
+  `.ai/tmp/`, never committed.
 - **Native in every theme.** Styling uses only `--vscode-*` variables, so light,
   dark and high-contrast all work without a single hard-coded colour.
 
@@ -167,13 +182,15 @@ resolver, the vocabulary and the supporting project folders.
 
 - Any folder. On first activation AI Workspace Manager sets it up from the template:
   `.ai/ai.json`, the resolver and vocabulary under `.ai/` (`.ai/scripts/`,
-  `.ai/catalog/`), the supporting folders an agent expects — `analysis`,
-  `checklists`, `completed`, `patterns`, `plans`, `progress`, `project`,
-  `reference` and `session-context.md` — and the agent configuration:
-  `AGENTS.md`, `.github/copilot-instructions.md`, `.claude/settings.json` and
-  `.gitattributes`. Nothing project-owned is overwritten; the same setup can be
-  re-run from Settings. On an existing project, setup also adds any newly
-  offered third-party source to `.ai/ai.json`, leaving the selection untouched.
+  `.ai/catalog/`), and the agent configuration: `AGENTS.md`,
+  `.github/copilot-instructions.md`, `.claude/settings.json` and
+  `.gitattributes`. A brand-new project also gets the supporting folders an
+  agent expects — `analysis`, `checklists`, `completed`, `patterns`, `plans`,
+  `progress`, `project`, `reference` and `session-context.md` — once; an
+  existing project is not re-seeded. Nothing project-owned is overwritten or
+  removed; the same setup can be re-run from Settings. On an existing project, setup also
+  adds any newly offered third-party source to `.ai/ai.json`, leaving the
+  selection untouched.
 - Python on `PATH`, or set `aiManager.pythonPath`. The resolver itself ships
   inside the VSIX.
 

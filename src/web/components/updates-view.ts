@@ -3,7 +3,7 @@ import type { UpdatePayload, UpdateRow } from "../../common/types";
 import { emptyUpdateNotice, filterUpdates, pluralise, releaseNotice, releaseSource } from "../logic";
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
-import { kindIcon } from "./parts";
+import { kindIcon, lockIcon } from "./parts";
 import "./parts";
 
 /**
@@ -113,6 +113,13 @@ export class UpdatesView extends LitElement {
       .banner strong {
         font-weight: 600;
       }
+      .row button.lock {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 6px;
+        line-height: 0;
+      }
       .badge {
         font-size: 10px;
         letter-spacing: 0.06em;
@@ -191,7 +198,8 @@ export class UpdatesView extends LitElement {
       `;
     }
 
-    const total = updates.ready.length + updates.blocked.length;
+    const held = updates.locked ?? [];
+    const total = updates.ready.length + updates.blocked.length + held.length;
     if (total === 0) {
       const notice = emptyUpdateNotice(updates.remoteSelected);
       return html`
@@ -213,10 +221,11 @@ export class UpdatesView extends LitElement {
       || store.updatesState !== "all" || store.updatesSource !== "all";
 
     return html`
-      ${this.renderFilters(ready.length + blocked.length, updates)}
+      ${this.renderFilters(ready.length + blocked.length + held.length, updates)}
       <div class="summary">
         <strong>${ready.length} update(s)</strong>
         ${blocked.length ? html`<span class="muted">${blocked.length} conflict(s)</span>` : ""}
+        ${held.length ? html`<span class="muted">${held.length} locked</span>` : ""}
         <span class="grow"></span>
         <button class="ghost" ?disabled=${store.loading}
           @click=${() => void store.refreshUpdatesAsync()}>Refresh</button>
@@ -225,7 +234,7 @@ export class UpdatesView extends LitElement {
           ${filtering ? `Update ${ready.length} shown` : "Update all safe"}
         </button>
       </div>
-      ${ready.length === 0 && blocked.length === 0
+      ${ready.length === 0 && blocked.length === 0 && held.length === 0
         ? html`
             <empty-state heading="No updates match these filters"
               hint="Clear a filter or search for something else.">
@@ -244,13 +253,21 @@ export class UpdatesView extends LitElement {
                   </p>
                   ${blocked.map((row) => this.renderRow(row, true))}`
               : ""}
+            ${held.length
+              ? html`<h3>Locked (${held.length})</h3>
+                  <p class="muted" style="margin: 0 14px 8px;">
+                    You locked these, so nothing here — not even Update all safe —
+                    will overwrite them. Unlock one to let the catalog move it again.
+                  </p>
+                  ${held.map((row) => this.renderLockedRow(row))}`
+              : ""}
           `}
     `;
   }
 
   /** The same filter set Browse offers, with update-specific state options. */
   private renderFilters(count: number, updates: UpdatePayload) {
-    const rows = [...updates.ready, ...updates.blocked];
+    const rows = [...updates.ready, ...updates.blocked, ...(updates.locked ?? [])];
     const sources = ["all", ...new Set(rows.map((row) => row.source))];
     const filtering = store.updatesQuery !== "" || store.updatesKind !== "all"
       || store.updatesState !== "all" || store.updatesSource !== "all";
@@ -325,6 +342,22 @@ export class UpdatesView extends LitElement {
               @click=${() => void store.updateOne(row.id, true)}>Overwrite mine</button>`
           : html`<button class="secondary" ?disabled=${store.loading}
               @click=${() => void store.updateOne(row.id)}>Update</button>`}
+      </div>
+    `;
+  }
+
+  /** A frozen row: nothing updates it, so the only action is to unfreeze it. */
+  private renderLockedRow(row: UpdateRow) {
+    return html`
+      <div class="row">
+        <span class="muted" title=${row.kind}>${kindIcon(row.kind)}</span>
+        <span class="name mono">${row.displayId}</span>
+        <span class="muted">${row.path}</span>
+        <span class="pill warn">locked</span>
+        <button class="ghost lock" ?disabled=${store.loading}
+          title="Locked — click to unlock and let updates touch this item again"
+          aria-label="Unlock item"
+          @click=${() => void store.setLocked([row.id], false)}>${lockIcon(true)}</button>
       </div>
     `;
   }

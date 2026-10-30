@@ -2,11 +2,11 @@
   "files": [
     {
       "path": ".ai/scripts/catalog.py",
-      "bytes": 157931
+      "bytes": 181961
     },
     {
       "path": ".ai/scripts/sync-platforms.py",
-      "bytes": 5398
+      "bytes": 8288
     },
     {
       "path": ".ai/scripts/sync-skills.py",
@@ -29,6 +29,10 @@
       "bytes": 11334
     },
     {
+      "path": ".ai/tests/validate-release.py",
+      "bytes": 12269
+    },
+    {
       "path": "catalog/presets.json",
       "bytes": 12998
     },
@@ -38,7 +42,7 @@
     },
     {
       "path": "catalog/schemas/ai.schema.json",
-      "bytes": 6964
+      "bytes": 8188
     },
     {
       "path": "catalog/schemas/index.schema.json",
