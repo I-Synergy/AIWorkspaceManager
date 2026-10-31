@@ -149,7 +149,7 @@ export function groupBySource<T extends { source: string }>(
   };
 
   if (order.length === 0) {
-    for (const id of [...buckets.keys()]) {
+    for (const id of buckets.keys()) {
       emit(id);
     }
     return groups;
