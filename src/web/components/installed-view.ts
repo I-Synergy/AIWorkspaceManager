@@ -1,6 +1,15 @@
 import { LitElement, css, html } from "lit";
 import type { CatalogItem } from "../../common/types";
-import { filterInstalled, groupInstalled, isAttention, pickState, pluralise, toggleAll } from "../logic";
+import {
+  filterInstalled,
+  groupBySource,
+  groupInstalled,
+  isAttention,
+  pickState,
+  pluralise,
+  sourceLabel,
+  toggleAll,
+} from "../logic";
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
 import { kindIcon, lockIcon } from "./parts";
@@ -84,6 +93,13 @@ export class InstalledView extends LitElement {
         letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--vscode-descriptionForeground);
+      }
+      h4 {
+        margin: 10px 14px 4px 24px;
+        font-size: 10.5px;
+        letter-spacing: 0.05em;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.85;
       }
       .row {
         display: grid;
@@ -223,7 +239,12 @@ export class InstalledView extends LitElement {
               ${groups.map(
                 (group) => html`
                   <h3>${group.label} (${group.items.length})</h3>
-                  ${group.items.map((item) => this.renderRow(item))}
+                  ${groupBySource(group.items, this.sourceOrder()).map(
+                    (source) => html`
+                      <h4>${source.label} (${source.items.length})</h4>
+                      ${source.items.map((item) => this.renderRow(item))}
+                    `,
+                  )}
                 `,
               )}
             </div>
@@ -286,7 +307,7 @@ export class InstalledView extends LitElement {
           }}
         >
           ${sources.map((source) =>
-            html`<option value=${source}>${source === "all" ? "All sources" : source}</option>`)}
+            html`<option value=${source}>${source === "all" ? "All sources" : sourceLabel(source)}</option>`)}
         </select>
         <span class="mode">${pluralise(count, "item")}</span>
         ${filtering
@@ -294,6 +315,11 @@ export class InstalledView extends LitElement {
           : ""}
       </div>
     `;
+  }
+
+  /** The manifest's source order, so headings do not reshuffle with the data. */
+  private sourceOrder(): string[] {
+    return (store.browse?.sources ?? []).map((source) => source.id);
   }
 
   private renderRow(item: CatalogItem) {

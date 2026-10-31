@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import type { UpdatePayload, UpdateRow } from "../../common/types";
-import { emptyUpdateNotice, filterUpdates, pluralise, releaseNotice, releaseSource } from "../logic";
+import { emptyUpdateNotice, filterUpdates, groupBySource, pluralise, releaseNotice, releaseSource, sourceLabel } from "../logic";
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
 import { kindIcon, lockIcon } from "./parts";
@@ -86,6 +86,13 @@ export class UpdatesView extends LitElement {
         letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--vscode-descriptionForeground);
+      }
+      h4 {
+        margin: 10px 14px 4px 24px;
+        font-size: 10.5px;
+        letter-spacing: 0.05em;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.85;
       }
       code {
         background: var(--vscode-textCodeBlock-background);
@@ -220,14 +227,24 @@ export class UpdatesView extends LitElement {
       || store.updatesState !== "all" || store.updatesSource !== "all";
     const readySection = ready.length
       ? html`<h3>Ready to update (${ready.length})</h3>
-          ${ready.map((row) => this.renderRow(row, false))}`
+          ${groupBySource(ready, this.sourceOrder()).map(
+            (source) => html`
+              <h4>${source.label} (${source.items.length})</h4>
+              ${source.items.map((row) => this.renderRow(row, false))}
+            `,
+          )}`
       : "";
     const blockedSection = blocked.length
       ? html`<h3>Changed here and upstream (${blocked.length})</h3>
           <p class="muted" style="margin: 0 14px 8px;">
             These were edited locally. Updating would overwrite those edits.
           </p>
-          ${blocked.map((row) => this.renderRow(row, true))}`
+          ${groupBySource(blocked, this.sourceOrder()).map(
+            (source) => html`
+              <h4>${source.label} (${source.items.length})</h4>
+              ${source.items.map((row) => this.renderRow(row, true))}
+            `,
+          )}`
       : "";
     const heldSection = held.length
       ? html`<h3>Locked (${held.length})</h3>
@@ -235,7 +252,12 @@ export class UpdatesView extends LitElement {
             You locked these, so nothing here — not even Update all safe —
             will overwrite them. Unlock one to let the catalog move it again.
           </p>
-          ${held.map((row) => this.renderLockedRow(row))}`
+          ${groupBySource(held, this.sourceOrder()).map(
+            (source) => html`
+              <h4>${source.label} (${source.items.length})</h4>
+              ${source.items.map((row) => this.renderLockedRow(row))}
+            `,
+          )}`
       : "";
 
     return html`
@@ -315,7 +337,7 @@ export class UpdatesView extends LitElement {
           }}
         >
           ${sources.map((source) =>
-            html`<option value=${source}>${source === "all" ? "All sources" : source}</option>`)}
+            html`<option value=${source}>${source === "all" ? "All sources" : sourceLabel(source)}</option>`)}
         </select>
         <span class="mode">${pluralise(count, "item")}</span>
         ${filtering
@@ -323,6 +345,11 @@ export class UpdatesView extends LitElement {
           : ""}
       </div>
     `;
+  }
+
+  /** The manifest's source order, so headings do not reshuffle with the data. */
+  private sourceOrder(): string[] {
+    return (store.browse?.sources ?? []).map((source) => source.id);
   }
 
   private renderRow(

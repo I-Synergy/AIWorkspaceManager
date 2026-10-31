@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Installed and Updates are grouped by source as well as by state.** Each section (Needs attention / Selected, not materialised / Locked / In sync, and Ready to update / Conflicts / Locked) now lists its items under the source they came from, in the manifest's source order, so provenance is visible without opening a row. The source filter labels the `template` bucket as **I-Synergy** consistently across Browse, Installed and Updates.
 - **Releases use the same automatic versioning as the AI repository.** A push to `main` derives a UTC build number (`YYYY.1MMdd.1HHmm`) and the matching `VersionInformational`/`VersionPackage` values (`-preview` on pull requests), uses `VersionPackage` as the extension version, publishes to the Marketplace, tags the build number and creates a GitHub Release with generated notes. Version-bump commits, the `Release` workflow and `tools/release.mjs` are gone; pull requests build and test without publishing.
 - The README publishing section documents the automatic flow, and `RELEASE_NOTES.md` is no longer required.
 - **Fixed the webview hanging on "Reading the catalog…".** The RPC client dropped every host response because it compared `event.source` with `window.parent`, and the VS Code webview preload rewrites `window.parent` to point at the webview itself. Responses are now accepted from the webview's own origin only; the UI no longer waits out the 10-minute RPC timeout.
