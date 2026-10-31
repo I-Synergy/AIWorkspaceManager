@@ -179,6 +179,40 @@ test("groupByCategory appends categories the vocabulary does not know", () => {
   assert.equal(groups[1].label, "zzz-unknown");
 });
 
+test("groupBySource follows the manifest order and labels the template source", () => {
+  const items = [
+    item({ id: "awesome:a", displayId: "a", source: "awesome-copilot" }),
+    item({}),
+    item({ id: "awesome:b", displayId: "b", source: "awesome-copilot" }),
+  ];
+
+  const groups = logic.groupBySource(items, ["template", "awesome-copilot"]);
+
+  assert.deepEqual(groups.map((group) => group.id), ["template", "awesome-copilot"]);
+  assert.equal(groups[0].label, "I-Synergy");
+  assert.equal(groups[1].label, "awesome-copilot");
+  assert.deepEqual(groups[1].items.map((entry) => entry.displayId), ["a", "b"]);
+});
+
+test("groupBySource appends unknown sources and keeps first-seen order without a list", () => {
+  const ordered = logic.groupBySource(
+    [
+      item({ id: "zeta:z", displayId: "z", source: "zeta" }),
+      item({}),
+      item({ id: "acme:a", displayId: "a", source: "acme" }),
+    ],
+    ["acme"],
+  );
+  assert.deepEqual(ordered.map((group) => group.id), ["acme", "template", "zeta"]);
+
+  const asSeen = logic.groupBySource([
+    item({ id: "zeta:z", displayId: "z", source: "zeta" }),
+    item({}),
+    item({ id: "acme:a", displayId: "a", source: "acme" }),
+  ]);
+  assert.deepEqual(asSeen.map((group) => group.id), ["zeta", "template", "acme"]);
+});
+
 /* ── multi-select ─────────────────────────────────────────────────────────── */
 
 test("pickState reports none, some and all", () => {

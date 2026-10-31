@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import type { CatalogItem } from "../../common/types";
-import { displayId, filterItems, groupByCategory, idsToInstall, itemKey, pickState, pluralise, toggleAll } from "../logic";
+import { displayId, filterItems, groupByCategory, idsToInstall, itemKey, pickState, pluralise, sourceLabel, toggleAll } from "../logic";
 import { hostApi } from "../registrations";
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
@@ -278,7 +278,7 @@ export class BrowseView extends LitElement {
             this.requestUpdate();
           }}
         >
-          ${sources.map((source) => html`<option value=${source}>${source === "all" ? "All sources" : source}</option>`)}
+          ${sources.map((source) => html`<option value=${source}>${source === "all" ? "All sources" : sourceLabel(source)}</option>`)}
         </select>
         <span class="count">${pluralise(filtered.length, "item")}</span>
       </div>

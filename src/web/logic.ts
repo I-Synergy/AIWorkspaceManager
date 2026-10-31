@@ -108,6 +108,61 @@ export function idsToInstall(items: CatalogItem[]): string[] {
   return items.filter((item) => !item.selected).map((item) => item.id);
 }
 
+/** Human label for a source id; the template bucket reads as its publisher. */
+export function sourceLabel(id: string): string {
+  return id === "template" ? "I-Synergy" : id;
+}
+
+/** One section of a list, grouped by the catalog source an item came from. */
+export interface SourceGroup<T> {
+  id: string;
+  label: string;
+  items: T[];
+}
+
+/**
+ * Group by source for the views that answer "where did this come from?".
+ * Declared sources keep the manifest's order; any source the payload does not
+ * name is appended alphabetically rather than hidden. With no declared order,
+ * groups appear in the order their first item does — callers that sort by
+ * severity first keep that ranking in the headings.
+ */
+export function groupBySource<T extends { source: string }>(
+  items: T[],
+  order: string[] = [],
+): SourceGroup<T>[] {
+  const buckets = new Map<string, T[]>();
+  for (const item of items) {
+    const bucket = buckets.get(item.source) ?? [];
+    bucket.push(item);
+    buckets.set(item.source, bucket);
+  }
+
+  const groups: SourceGroup<T>[] = [];
+  const emit = (id: string): void => {
+    const bucket = buckets.get(id);
+    if (!bucket || bucket.length === 0) {
+      return;
+    }
+    groups.push({ id, label: sourceLabel(id), items: bucket });
+    buckets.delete(id);
+  };
+
+  if (order.length === 0) {
+    for (const id of [...buckets.keys()]) {
+      emit(id);
+    }
+    return groups;
+  }
+  for (const id of order) {
+    emit(id);
+  }
+  for (const id of [...buckets.keys()].sort((a, b) => sourceLabel(a).localeCompare(sourceLabel(b)))) {
+    emit(id);
+  }
+  return groups;
+}
+
 export function groupInstalled(items: CatalogItem[]): InstalledGroup[] {
   const selected = items.filter((item) => item.selected);
   const groups: InstalledGroup[] = [
@@ -263,7 +318,7 @@ export function releaseNotice(row: ReleaseRow | undefined): ReleaseNotice | null
   if (!row.pinnedTag) {
     // We know what upstream publishes, but not which release (if any) this
     // tree corresponds to. Saying so beats "nothing to compare".
-    const source = row.id === "template" ? "I-Synergy" : row.id;
+    const source = sourceLabel(row.id);
     return {
       kind: "unpinned",
       label: `${source} release ${row.latest}${candidate} is published`,
