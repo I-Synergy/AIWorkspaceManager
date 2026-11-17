@@ -30,7 +30,7 @@ Re-examine before Phase 2 ships. Introducing third-party agents/skills into ever
 
 ## Problem
 
-The template currently has no notion of *which* skills a project wants. `.ai/skills/` (80) and `.ai/agents/` (9) are copied wholesale by `upgrade-template.py` (`TEMPLATE_OWNED` includes both directories), and `sync-skills.py` junctions the whole folder into `.claude/`, `.github/`, `.reasonix/`. Selection is all-or-nothing by construction.
+The template currently has no notion of *which* skills a project wants. `.ai/skills/` (80) and `.ai/agents/` (9) are copied wholesale by `upgrade-template.py` (`TEMPLATE_OWNED` includes both directories), and `sync-skills.py` junctions the whole folder into `.claude/` and `.github/`. Selection is all-or-nothing by construction.
 
 Merging `github/awesome-copilot` at `main` adds 222 agents, 193 instructions, 447 skills, 108 plugins, 8 hooks, 8 workflows — a merged catalog of roughly 530 skills and 230 agents. The cost is paid on three independent budgets:
 

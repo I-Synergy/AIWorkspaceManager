@@ -1,14 +1,23 @@
 import { LitElement, css, html } from "lit";
 import type { ClientName } from "../../AiWorkspaceManager.VSCode.Common/types";
-import { releaseSummary, sourceRefLabel } from "../logic";
+import { agentFileDetails, agentStatusClass, releaseSummary, sourceRefLabel } from "../logic";
 import { hostApi } from "../registrations";
-import { store } from "../store";
+import { store, type RunReport } from "../store";
 import { sharedStyles } from "../styles/shared.css";
 
+/** What each client gets on disk. Prompts are mentioned only as an option, because they are linked only when installed. */
 const CLIENT_OPTIONS: { id: ClientName; label: string; detail: string }[] = [
-  { id: "claude", label: "Claude Code", detail: ".claude/skills, agents, commands and instructions" },
-  { id: "copilot", label: "GitHub Copilot", detail: ".github/skills, agents, prompts, instructions and copilot-instructions.md" },
-  { id: "reasonix", label: "Reasonix Code", detail: ".reasonix/skills and .reasonix/agents" },
+  {
+    id: "claude",
+    label: "Claude Code",
+    detail: ".claude/skills, agents, rules generated from .ai/instructions, and settings.json hooks (prompts only if installed)",
+  },
+  {
+    id: "copilot",
+    label: "GitHub Copilot",
+    detail: ".github/skills, agents, instructions, copilot-instructions.md and .vscode workspace settings (prompts only if installed)",
+  },
+  { id: "agents", label: "Other agents", detail: ".agents/skills — Codex and other skills-standard agents" },
 ];
 
 /** Settings: the knobs that are not per-item, plus the maintenance actions. */
@@ -117,6 +126,23 @@ export class SettingsView extends LitElement {
         gap: 8px;
         flex-wrap: wrap;
       }
+      .report td div {
+        margin-bottom: 2px;
+      }
+      .report-lines {
+        margin: 10px 0 0;
+        max-height: 260px;
+        overflow: auto;
+        padding: 8px 10px;
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: 11.5px;
+        line-height: 1.5;
+        white-space: pre;
+        color: var(--vscode-foreground);
+        background: var(--vscode-textCodeBlock-background, transparent);
+        border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 55%, transparent);
+        border-radius: 3px;
+      }
     `,
   ];
 
@@ -128,6 +154,40 @@ export class SettingsView extends LitElement {
       selected.delete(client);
     }
     void store.setClients(CLIENT_OPTIONS.map((option) => option.id).filter((id) => selected.has(id)));
+  }
+
+  /**
+   * The last setup or sync: a row per merged client file (status, added, pinned, kept conflicts) and the
+   * mirror report lines. Hidden until a run has happened.
+   */
+  private renderReport(report: RunReport) {
+    return html`
+      <section class="report">
+        <h2>Report</h2>
+        <p>${report.title} — the outcome of the last run in this session.</p>
+        ${report.files.length > 0 ? html`
+          <table>
+            <thead><tr><th>File</th><th>Status</th><th>Changes</th></tr></thead>
+            <tbody>
+              ${report.files.map((file) => html`
+                <tr>
+                  <td class="mono">${file.relativePath}</td>
+                  <td><span class="pill ${agentStatusClass(file.status)}">${file.status}</span></td>
+                  <td>
+                    ${agentFileDetails(file).length > 0
+                      ? agentFileDetails(file).map((detail) => html`<div>${detail}</div>`)
+                      : html`<span class="muted">nothing to change</span>`}
+                  </td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        ` : ""}
+        ${report.lines.length > 0
+          ? html`<pre class="report-lines">${report.lines.join("\n")}</pre>`
+          : ""}
+      </section>
+    `;
   }
 
   override render() {
@@ -182,9 +242,10 @@ export class SettingsView extends LitElement {
         <h2>Clients</h2>
         <p>
           Each client gets platform folders linked to the same <code>.ai/</code> content.
-          Disabling a client removes only its junctions and generated Copilot instructions;
+          Disabling a client removes only its links and its generated rules or Copilot instructions;
           real directories and <code>.github/workflows</code> are never touched. A missing
-          <code>clients</code> field keeps every client for older projects.
+          <code>clients</code> field keeps every client for older projects. Hook items are linked
+          per file into <code>.github/hooks/</code> when Copilot is enabled.
         </p>
         <div class="clients">
           ${CLIENT_OPTIONS.map((option) => html`
@@ -204,6 +265,8 @@ export class SettingsView extends LitElement {
           `)}
         </div>
       </section>
+
+      ${store.report ? this.renderReport(store.report) : ""}
 
       <section>
         <h2>Sources</h2>

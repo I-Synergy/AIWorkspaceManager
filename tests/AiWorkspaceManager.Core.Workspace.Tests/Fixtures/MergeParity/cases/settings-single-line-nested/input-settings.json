@@ -1,0 +1,3 @@
+{
+  "terminal.integrated.env.windows": { "PIP_CONFIG_FILE": "x" }
+}

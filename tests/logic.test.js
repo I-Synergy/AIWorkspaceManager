@@ -381,3 +381,61 @@ test("filterUpdates keeps the ready/conflict split and honours filters", () => {
   assert.deepEqual(f({ source: "awesome-copilot" }).blocked, []);
   assert.deepEqual(f({ query: "B" }).blocked.map((r) => r.displayId), ["arch"]);
 });
+
+test("kindTooltip and kindHint explain Prompts and leave other kinds plain", () => {
+  assert.equal(logic.PROMPT_KIND_HINT, "Copilot's harness doesn't load prompt files; Claude exposes them as commands. Prefer skills.");
+  assert.equal(logic.kindHint("prompt"), logic.PROMPT_KIND_HINT);
+  assert.equal(logic.kindHint("skill"), undefined);
+  assert.equal(logic.kindHint("all"), undefined);
+  assert.equal(logic.kindTooltip("skill"), "skill");
+  assert.ok(logic.kindTooltip("prompt").startsWith("Prompts. "));
+  assert.ok(logic.kindTooltip("prompt").endsWith(logic.PROMPT_KIND_HINT));
+});
+
+function agentFile(overrides) {
+  return {
+    relativePath: ".vscode/settings.json",
+    status: "merged",
+    added: [],
+    pinned: [],
+    conflicts: [],
+    error: null,
+    ...overrides,
+  };
+}
+
+test("agentFileDetails names what was added, pinned and kept, or why it failed", () => {
+  assert.deepEqual(logic.agentFileDetails(agentFile({
+    added: ["editor.tabSize"],
+    pinned: ["chat.useAgentSkills"],
+    conflicts: ["files.eol"],
+  })), [
+    "added: editor.tabSize",
+    "pinned: chat.useAgentSkills",
+    "kept (project value): files.eol",
+  ]);
+  assert.deepEqual(logic.agentFileDetails(agentFile({ status: "unchanged" })), []);
+  assert.deepEqual(logic.agentFileDetails(agentFile({ status: "error", error: "not valid JSON" })), [
+    "error: not valid JSON",
+  ]);
+});
+
+test("agentStatusClass colours created and merged as ok, errors as danger", () => {
+  assert.equal(logic.agentStatusClass("created"), "ok");
+  assert.equal(logic.agentStatusClass("merged"), "ok");
+  assert.equal(logic.agentStatusClass("unchanged"), "available");
+  assert.equal(logic.agentStatusClass("error"), "danger");
+});
+
+test("agentConfigSummary counts each status and the kept conflicts, and is empty without files", () => {
+  assert.equal(logic.agentConfigSummary([]), "");
+  assert.equal(
+    logic.agentConfigSummary([
+      agentFile({ status: "created" }),
+      agentFile({ relativePath: ".vscode/tasks.json", status: "unchanged" }),
+      agentFile({ relativePath: ".claude/settings.json", status: "merged", conflicts: ["plansDirectory", "env.X"] }),
+      agentFile({ relativePath: ".vscode/extra.json", status: "error", error: "bad" }),
+    ]),
+    "Settings files: 1 created, 1 merged, 1 unchanged, 2 conflicting values kept, 1 file not merged.",
+  );
+});

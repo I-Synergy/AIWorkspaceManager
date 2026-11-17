@@ -565,6 +565,8 @@ public sealed class WorkspaceOperations
         var performed = new List<SyncPerformed>();
         var markersRemoved = 0;
         var legacyIndexRemoved = false;
+        MirrorReport? mirror = null;
+        AgentConfigPayload? agentConfig = null;
         if (!dryRun)
         {
             foreach (var marker in markerFiles)
@@ -642,19 +644,25 @@ public sealed class WorkspaceOperations
             }
 
             _ = setup.InstallTooling(templateRoot, overwrite: false, reference);
-            _ = setup.InstallAgentConfig(manifest.Root);
+            agentConfig = AgentConfigPayload.From(setup.InstallAgentConfig(manifest.Root));
             if (fresh)
             {
                 _ = setup.InstallScaffold(templateRoot);
             }
 
             _ = setup.EnsureGitignore();
-            _ = new PlatformMirrorService(queries.Paths).Sync(manifest);
+            mirror = new PlatformMirrorService(queries.Paths).Sync(manifest);
         }
 
         if (!dryRun)
         {
             _ = new InstructionDocumentService(queries).Update(manifest.Root);
+        }
+
+        if (mirror is not null)
+        {
+            conflicts.AddRange(mirror.Conflicts.Select(target =>
+                $"{target} holds content the sync will not overwrite; resolve it by hand, then sync again"));
         }
 
         var applied = new SyncReport(
@@ -681,6 +689,15 @@ public sealed class WorkspaceOperations
         }
 
         output.AddRange(Describe(actions, pendingPrune));
+        if (agentConfig is not null)
+        {
+            output.AddRange(agentConfig.Lines());
+        }
+
+        if (mirror is not null)
+        {
+            output.AddRange(mirror.Lines);
+        }
         if (pendingPrune.Count > 0 && !prune)
         {
             output.Add($"{prefix}{pendingPrune.Count} item(s) pending prune (run 'catalog.py sync --prune')");
@@ -736,12 +753,13 @@ public sealed class WorkspaceOperations
             LockDocument.Save(queries.Paths.LockPath, entries.Values);
         }
 
+        var agentLines = new List<string>();
         if (tooling)
         {
             _ = setup.MigrateCatalogDirectory();
             var sourceRoot = queries.Sources.TemplateRoot(plan.Manifest);
             _ = setup.InstallTooling(sourceRoot, overwrite: true, SourceCatalog.SourceRef(plan.Manifest));
-            _ = setup.InstallAgentConfig(plan.Manifest.Root);
+            agentLines.AddRange(AgentConfigPayload.From(setup.InstallAgentConfig(plan.Manifest.Root)).Lines());
             _ = setup.EnsureGitignore();
             _ = new PlatformMirrorService(queries.Paths).Sync(plan.Manifest);
         }
@@ -755,7 +773,7 @@ public sealed class WorkspaceOperations
             plan.Blocked,
             plan.Held,
             plan.RemoteSelected);
-        var lines = new List<string>();
+        var lines = new List<string>(agentLines);
         lines.AddRange(applied.Select(entry => $"  {(entry.Ok ? "OK" : "FAILED"),-8} {ItemId.Display(entry.Id)}"));
         lines.AddRange(plan.Held.Select(row => $"  {"LOCKED",-8} {row.DisplayId} ({row.Kind}) — left untouched"));
         lines.Add($"\n{applied.Count} item(s) updated, {plan.Held.Count} locked and left untouched.");

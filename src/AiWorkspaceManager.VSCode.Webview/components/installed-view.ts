@@ -5,6 +5,8 @@ import {
   groupBySource,
   groupInstalled,
   isAttention,
+  kindHint,
+  kindTooltip,
   pickState,
   pluralise,
   sourceLabel,
@@ -282,10 +284,11 @@ export class InstalledView extends LitElement {
           <option value="skill">Skills</option>
           <option value="agent">Agents</option>
           <option value="instruction">Instructions</option>
-          <option value="prompt">Prompts</option>
+          <option value="prompt" title=${kindTooltip("prompt")}>Prompts</option>
           <option value="plugin">Plugins</option>
           <option value="hook">Hooks</option>
         </select>
+        ${kindHint(store.installedKind) ? html`<span class="hint">${kindHint(store.installedKind)}</span>` : ""}
         <select
           .value=${store.installedState}
           @change=${(event: Event) => {
@@ -332,7 +335,7 @@ export class InstalledView extends LitElement {
           title="Tick for a bulk action"
           @change=${() => store.togglePick(item.id)}
         />
-        <span class="muted" title=${item.kind}>${kindIcon(item.kind)}</span>
+        <span class="muted" title=${kindTooltip(item.kind)}>${kindIcon(item.kind)}</span>
         <span class="name mono">${item.displayId}</span>
         <span class="path">${item.path}</span>
         ${item.status === "ok" ? html`<span></span>` : html`

@@ -4,7 +4,9 @@
  * grouping, preset deltas, status wording) are verified without an editor.
  */
 
-import type { CatalogItem, ItemKind, PresetCard, ReleaseRow, UpdateRow } from "../AiWorkspaceManager.VSCode.Common/types";
+import type {
+  AgentFileReport, CatalogItem, ItemKind, PresetCard, ReleaseRow, UpdateRow,
+} from "../AiWorkspaceManager.VSCode.Common/types";
 import type { InstalledGroup } from "./types-web";
 
 export type FilterState = {
@@ -246,6 +248,77 @@ export function presetDelta(
 
 export function pluralise(count: number, singular: string, plural = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/* ── kinds ────────────────────────────────────────────────────────────────── */
+
+/** Shown next to the Prompts kind: Copilot's harness does not load prompt files, so skills are the portable format. */
+export const PROMPT_KIND_HINT =
+  "Copilot's harness doesn't load prompt files; Claude exposes them as commands. Prefer skills.";
+
+/** The hover text for an item kind; only Prompts carries more than its name. */
+export function kindTooltip(kind: string): string {
+  return kind === "prompt" ? `Prompts. ${PROMPT_KIND_HINT}` : kind;
+}
+
+/** The visible hint for a kind filter, or nothing for the kinds that need no explanation. */
+export function kindHint(kind: string): string | undefined {
+  return kind === "prompt" ? PROMPT_KIND_HINT : undefined;
+}
+
+/* ── agent configuration (merged client files) ────────────────────────────── */
+
+/** The detail lines for one merged file: what was added, pinned, kept as a conflict, or why it failed. */
+export function agentFileDetails(file: AgentFileReport): string[] {
+  if (file.status === "error") {
+    return [`error: ${file.error ?? "not merged"}`];
+  }
+  const details: string[] = [];
+  if (file.added.length > 0) {
+    details.push(`added: ${file.added.join(", ")}`);
+  }
+  if (file.pinned.length > 0) {
+    details.push(`pinned: ${file.pinned.join(", ")}`);
+  }
+  if (file.conflicts.length > 0) {
+    details.push(`kept (project value): ${file.conflicts.join(", ")}`);
+  }
+  return details;
+}
+
+/** Pill colour for a merge status: created and merged are good news, an error needs attention. */
+export function agentStatusClass(status: string): string {
+  switch (status) {
+    case "created":
+    case "merged":
+      return "ok";
+    case "error":
+      return "danger";
+    default:
+      return "available";
+  }
+}
+
+/** One sentence for the setup toast, or nothing when no client file was involved. */
+export function agentConfigSummary(files: AgentFileReport[]): string {
+  if (files.length === 0) {
+    return "";
+  }
+  const count = (status: string) => files.filter((file) => file.status === status).length;
+  const conflicts = files.reduce((total, file) => total + file.conflicts.length, 0);
+  const errors = count("error");
+  const parts = [
+    `${count("created")} created`,
+    `${count("merged")} merged`,
+    `${count("unchanged")} unchanged`,
+  ];
+  if (conflicts > 0) {
+    parts.push(`${pluralise(conflicts, "conflicting value")} kept`);
+  }
+  if (errors > 0) {
+    parts.push(`${pluralise(errors, "file")} not merged`);
+  }
+  return `Settings files: ${parts.join(", ")}.`;
 }
 
 /* ── releases ─────────────────────────────────────────────────────────────── */

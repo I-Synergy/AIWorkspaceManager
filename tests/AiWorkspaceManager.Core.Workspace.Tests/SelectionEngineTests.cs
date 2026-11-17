@@ -132,7 +132,7 @@ public sealed class SelectionEngineTests
     {
         var clients = SelectionEngine.Clients(Manifest("{}"));
 
-        CollectionAssert.AreEquivalent(new[] { "claude", "copilot", "reasonix" }, clients.ToArray());
+        CollectionAssert.AreEquivalent(new[] { "claude", "copilot", "agents" }, clients.ToArray());
     }
 
     [TestMethod]

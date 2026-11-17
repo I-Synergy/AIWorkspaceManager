@@ -122,6 +122,13 @@ export const sharedStyles = css`
     color: var(--vscode-descriptionForeground);
   }
 
+  /* A short explanation beside a control, such as what a kind means for the client. */
+  .hint {
+    font-size: 11.5px;
+    color: var(--vscode-descriptionForeground);
+    max-width: 420px;
+  }
+
   .mono {
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 12px;

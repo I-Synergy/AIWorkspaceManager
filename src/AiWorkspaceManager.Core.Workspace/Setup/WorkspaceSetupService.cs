@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Nodes;
 using AiWorkspaceManager.Common;
 using AiWorkspaceManager.Core.Catalog;
@@ -15,8 +16,9 @@ public sealed class WorkspaceSetupService
 
     public static readonly IReadOnlyList<string> TemplateFiles = [".ai/session-context.md"];
 
+    /// <summary>Client files copied when missing. <c>.claude/settings.json</c> is merged, not copied; see <see cref="InstallAgentConfig"/>.</summary>
     public static readonly IReadOnlyList<string> AgentFiles =
-        ["AGENTS.md", ".github/copilot-instructions.md", ".claude/settings.json", ".gitattributes"];
+        ["AGENTS.md", ".github/copilot-instructions.md", ".gitattributes"];
 
     public static readonly IReadOnlyList<string> GitignoreEntries =
     [
@@ -32,8 +34,9 @@ public sealed class WorkspaceSetupService
         ".github/prompts/",
         ".claude/commands/",
         ".claude/instructions/",
-        ".reasonix/skills/",
-        ".reasonix/agents/",
+        ".claude/rules/*.instructions.md",
+        ".agents/skills/",
+        ".github/hooks/",
     ];
 
     /// <summary>
@@ -159,26 +162,25 @@ public sealed class WorkspaceSetupService
         return new FileCopySummary(copied, skipped);
     }
 
-    /// <summary>Write the missing client-facing files for the selected clients.</summary>
-    public FileCopySummary InstallAgentConfig(JsonObject? manifest)
+    /// <summary>
+    /// Write the missing client-facing files for the selected clients, and merge the template's Claude settings
+    /// and VS Code settings/tasks into the project's existing files (comments and formatting preserved).
+    /// </summary>
+    public AgentConfigSummary InstallAgentConfig(JsonObject? manifest)
     {
         var copied = new List<string>();
         var skipped = new List<string>();
+        var merged = new List<AgentFileMerge>();
         var sourceRoot = queries.Sources.TemplateRoot(manifest is null ? queries.ManifestOrStarter() : ManifestDocument.Temporary(manifest));
         if (WorkspacePaths.SamePath(sourceRoot, Paths.Root))
         {
-            return new FileCopySummary(copied, skipped);
+            return new AgentConfigSummary(copied, skipped, merged);
         }
 
         var clients = SelectionEngine.Clients(
             manifest is null ? queries.ManifestOrStarter() : ManifestDocument.Temporary(manifest));
         foreach (var relative in AgentFiles)
         {
-            if (relative == ".claude/settings.json" && !clients.Contains("claude"))
-            {
-                continue;
-            }
-
             if (relative == ".github/copilot-instructions.md" && !clients.Contains("copilot"))
             {
                 continue;
@@ -207,8 +209,99 @@ public sealed class WorkspaceSetupService
             copied.Add(relative);
         }
 
-        return new FileCopySummary(copied, skipped);
+        if (clients.Contains("claude"))
+        {
+            MergeClaudeSettings(sourceRoot, copied, merged);
+        }
+
+        if (clients.Contains("copilot"))
+        {
+            MergeVsCodeFiles(sourceRoot, copied, merged);
+        }
+
+        return new AgentConfigSummary(copied, skipped, merged);
     }
+
+    /// <summary>Merge the template's <c>.claude/settings.json</c> into the project's copy (created when missing).</summary>
+    private void MergeClaudeSettings(string sourceRoot, List<string> copied, List<AgentFileMerge> merged)
+    {
+        const string relative = ".claude/settings.json";
+        var template = Path.Combine(sourceRoot, ".claude", "settings.json");
+        if (!File.Exists(template))
+        {
+            return;
+        }
+
+        // An older template without merge-rules.json has no legacy list; the merge then only adds what the template ships.
+        var legacy = MergeRules.Load(sourceRoot)?.LegacyHookCommands ?? Array.Empty<string>();
+        var target = Path.Combine(Paths.Root, ".claude", "settings.json");
+        var result = ClaudeSettingsMerge.Merge(ReadProjectFile(target), File.ReadAllText(template), legacy);
+        ApplyMerge(relative, target, result, copied, merged);
+    }
+
+    /// <summary>
+    /// Merge the template's VS Code fragments into <c>.vscode/settings.json</c> and <c>tasks.json</c>. Without the
+    /// shared merge rules (an older template) nothing is merged, and the template's own <c>.vscode</c> files are
+    /// never copied.
+    /// </summary>
+    private void MergeVsCodeFiles(string sourceRoot, List<string> copied, List<AgentFileMerge> merged)
+    {
+        var rules = MergeRules.Load(sourceRoot);
+        if (rules is null)
+        {
+            return;
+        }
+
+        var fragments = Path.Combine(sourceRoot, ".ai", "reference", "templates", "vscode");
+        var settingsFragment = Path.Combine(fragments, "settings.json");
+        if (File.Exists(settingsFragment))
+        {
+            var pinned = new HashSet<string>(rules.PinnedSettings, StringComparer.Ordinal);
+            var target = Path.Combine(Paths.Root, ".vscode", "settings.json");
+            var result = VsCodeSettingsMerge.Merge(ReadProjectFile(target), File.ReadAllText(settingsFragment), pinned);
+            ApplyMerge(".vscode/settings.json", target, result, copied, merged);
+        }
+
+        var tasksFragment = Path.Combine(fragments, "tasks.json");
+        if (File.Exists(tasksFragment))
+        {
+            var target = Path.Combine(Paths.Root, ".vscode", "tasks.json");
+            var result = VsCodeTasksMerge.Merge(ReadProjectFile(target), File.ReadAllText(tasksFragment));
+            ApplyMerge(".vscode/tasks.json", target, result, copied, merged);
+        }
+    }
+
+    /// <summary>Record a merge outcome and write the file when the merge created or changed it. Errors and no-ops write nothing.</summary>
+    private static void ApplyMerge(
+        string relative,
+        string target,
+        JsoncMergeResult result,
+        List<string> copied,
+        List<AgentFileMerge> merged)
+    {
+        merged.Add(new AgentFileMerge(relative, result));
+        if (result.Status is not (MergeStatus.Created or MergeStatus.Merged))
+        {
+            return;
+        }
+
+        var parent = Path.GetDirectoryName(target);
+        if (!string.IsNullOrEmpty(parent))
+        {
+            Directory.CreateDirectory(parent);
+        }
+
+        // A byte-order mark the project had is part of the text, so it is written back; no new one is added.
+        File.WriteAllText(target, result.Text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        if (result.Status == MergeStatus.Created)
+        {
+            copied.Add(relative);
+        }
+    }
+
+    /// <summary>The project file's text including any byte-order mark, or null when it is missing.</summary>
+    private static string? ReadProjectFile(string path) =>
+        File.Exists(path) ? Encoding.UTF8.GetString(File.ReadAllBytes(path)) : null;
 
     /// <summary>Record pre-existing template files as template-owned.</summary>
     public void SeedToolingRecord()
@@ -357,7 +450,7 @@ public sealed class WorkspaceSetupService
         return new ToolingSummary(copied, skipped, unchanged, missing, protectedFiles);
     }
 
-    /// <summary>Ignore resolver state and the platform junctions; existing lines are kept.</summary>
+    /// <summary>Ignore resolver state and the platform links; existing lines are kept.</summary>
     public string EnsureGitignore()
     {
         var path = Path.Combine(Paths.Root, ".gitignore");
@@ -373,7 +466,7 @@ public sealed class WorkspaceSetupService
             return "kept";
         }
 
-        var block = "# AI Workspace Manager: resolver cache and platform junctions\n"
+        var block = "# AI Workspace Manager: resolver cache and platform links\n"
             + string.Join("\n", missing) + "\n";
         if (text.Length == 0)
         {

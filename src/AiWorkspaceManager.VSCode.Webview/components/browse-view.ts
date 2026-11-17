@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import type { CatalogItem } from "../../AiWorkspaceManager.VSCode.Common/types";
-import { displayId, filterItems, groupByCategory, idsToInstall, itemKey, pickState, pluralise, sourceLabel, toggleAll } from "../logic";
+import { displayId, filterItems, groupByCategory, idsToInstall, itemKey, kindHint, kindTooltip, pickState, pluralise, sourceLabel, toggleAll } from "../logic";
 import { hostApi } from "../registrations";
 import { store } from "../store";
 import { sharedStyles } from "../styles/shared.css";
@@ -255,10 +255,11 @@ export class BrowseView extends LitElement {
           <option value="skill">Skills</option>
           <option value="agent">Agents</option>
           <option value="instruction">Instructions</option>
-          <option value="prompt">Prompts</option>
+          <option value="prompt" title=${kindTooltip("prompt")}>Prompts</option>
           <option value="plugin">Plugins</option>
           <option value="hook">Hooks</option>
         </select>
+        ${kindHint(store.kindFilter) ? html`<span class="hint">${kindHint(store.kindFilter)}</span>` : ""}
         <select
           .value=${store.stateFilter}
           @change=${(event: Event) => {
@@ -362,7 +363,7 @@ export class BrowseView extends LitElement {
             store.togglePick(item.id);
           }}
         />
-        <span class="muted" title=${item.kind}>${kindIcon(item.kind)}</span>
+        <span class="muted" title=${kindTooltip(item.kind)}>${kindIcon(item.kind)}</span>
         <span class="name mono">${item.displayId}</span>
         <span class="desc">${item.description}</span>
         ${this.renderState(item)}
@@ -395,7 +396,7 @@ export class BrowseView extends LitElement {
         <p class="description">${item.description || "(no description)"}</p>
         <dl>
           <dt>Kind</dt>
-          <dd>${item.kind}</dd>
+          <dd>${item.kind}${kindHint(item.kind) ? html`<div class="hint">${kindHint(item.kind)}</div>` : ""}</dd>
           <dt>Source</dt>
           <dd>${item.source} @ ${item.ref}</dd>
           <dt>License</dt>

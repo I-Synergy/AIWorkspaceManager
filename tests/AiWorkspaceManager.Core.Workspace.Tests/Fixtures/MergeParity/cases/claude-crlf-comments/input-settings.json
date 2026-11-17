@@ -1,0 +1,5 @@
+{
+  // mine
+  "env": { "A": "1", },
+  "permissions": { "allow": ["Bash(ls)"], },
+}
