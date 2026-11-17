@@ -1,0 +1,67 @@
+{
+  // mine
+  "env": { "A": "1",
+    "MSBUILDDISABLENODEREUSE": "1",
+    "DOTNET_CLI_USE_MSBUILD_SERVER": "0",
+    "UseSharedCompilation": "false", },
+  "permissions": { "allow": ["Bash(ls)"],
+    "deny": [
+      "Bash(rm -rf:*)"
+    ],
+    "additionalDirectories": [
+      "./.claude",
+      "./.ai",
+      "./.ai/analysis",
+      "./.ai/checklists",
+      "./.ai/completed",
+      "./.ai/patterns",
+      "./.ai/plans",
+      "./.ai/progress",
+      "./.ai/project",
+      "./.ai/reference",
+      "./.ai/agents",
+      "./.ai/skills",
+      "./.ai/scripts",
+      "./.ai/tests",
+      "./.ai/tmp"
+    ], },
+  "plansDirectory": "./.ai/plans",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .ai/scripts/hooks/py.sh .ai/scripts/hooks/session_start.py",
+            "statusMessage": "Syncing links and loading session context from .ai/session-context.md..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Write(.ai/skills/**/*)|Edit(.ai/skills/**/*)|Write(.ai/agents/**/*)|Edit(.ai/agents/**/*)|Write(.ai/instructions/**/*)|Edit(.ai/instructions/**/*)",
+            "command": "bash .ai/scripts/hooks/py.sh .ai/scripts/hooks/post_edit_sync.py",
+            "statusMessage": "Syncing skills, agents and instructions..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .ai/scripts/hooks/py.sh .ai/scripts/hooks/stop_build.py",
+            "statusMessage": "Building solution if needed..."
+          }
+        ]
+      }
+    ]
+  },
+}

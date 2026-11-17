@@ -10,4 +10,6 @@ public sealed record BootstrapPayload(
     IReadOnlyList<string> LegacyRemoved,
     string Gitignore,
     string Readme,
-    IReadOnlyDictionary<string, string> Instructions);
+    IReadOnlyDictionary<string, string> Instructions,
+    AgentConfigPayload AgentConfig,
+    IReadOnlyList<string> Mirror);

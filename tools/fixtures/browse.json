@@ -2038,7 +2038,7 @@
       "kind": "skill",
       "name": "sync-platforms",
       "path": ".ai/skills/sync-platforms",
-      "description": "Syncs the platform junctions for skills, agents, prompts and instructions from .ai/ to .claude/, .github/ and .reasonix/. Run after adding, editing, or removing an item in those source directories.",
+      "description": "Links the canonical .ai/ content into the paths agents actually read (.claude/, .github/, .agents/). Run after adding, editing, or removing an item in those source directories.",
       "category": "tooling",
       "tags": [],
       "source": "template",

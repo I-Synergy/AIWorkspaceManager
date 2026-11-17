@@ -52,5 +52,5 @@ public static class ResolverDefaults
         };
 
     /// <summary>AI clients whose platform folders are materialised.</summary>
-    public static readonly IReadOnlyList<string> Clients = ["claude", "copilot", "reasonix"];
+    public static readonly IReadOnlyList<string> Clients = ["claude", "copilot", "agents"];
 }

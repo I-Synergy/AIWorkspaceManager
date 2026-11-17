@@ -97,16 +97,15 @@ public sealed class MaintenanceServiceTests
         var (temp, queries, service) = Subject();
         using var scope = temp;
 
-        var outcome = service.Clients(["copilot", "reasonix"]);
+        var outcome = service.Clients(["copilot", "agents"]);
 
         Assert.AreEqual(0, outcome.Result.Code);
         CollectionAssert.AreEqual(
-            new[] { "copilot", "reasonix" },
+            new[] { "copilot", "agents" },
             queries.LoadManifest()!.GetStringArray("clients").ToArray());
         Assert.ThrowsExactly<AiWorkspaceManager.Common.ResolverException>(
             () => service.Clients(["cursor"]));
     }
-
 
     [TestMethod]
     [TestCategory("Unit")]

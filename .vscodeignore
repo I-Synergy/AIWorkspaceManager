@@ -33,7 +33,6 @@ social.md
 todo.md
 tmp/**
 .pytest_cache/**
-.reasonix/**
 **/__pycache__/**
 .tooling-staging/**
 scripts/**

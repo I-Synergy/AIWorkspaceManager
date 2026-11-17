@@ -32,7 +32,11 @@ public sealed class PayloadContractTests
             ["h"],
             "created",
             "created",
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["AGENTS.md"] = "updated" });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["AGENTS.md"] = "updated" },
+            new AgentConfigPayload(
+                ["AGENTS.md"],
+                [new AgentFilePayload(".vscode/settings.json", "merged", ["editor.tabSize"], ["chat.useAgentSkills"], ["files.eol"], null)]),
+            ["Ensuring folder-level links for: claude"]);
 
         var json = Serialize(payload);
 
@@ -41,7 +45,35 @@ public sealed class PayloadContractTests
         StringAssert.Contains(json, "\"scaffold\":");
         StringAssert.Contains(json, "\"legacyRemoved\":");
         StringAssert.Contains(json, "\"gitignore\":\"created\"");
+        StringAssert.Contains(json, "\"agentConfig\":{\"copied\":[\"AGENTS.md\"]");
+        StringAssert.Contains(json, "\"relativePath\":\".vscode/settings.json\",\"status\":\"merged\"");
+        StringAssert.Contains(json, "\"pinned\":[\"chat.useAgentSkills\"]");
+        StringAssert.Contains(json, "\"mirror\":[\"Ensuringfolder-levellinksfor:claude\"]");
         StringAssert.Contains(json, "\"AGENTS.md\":\"updated\"");
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void AgentConfigPayload_DescribesChangedAndFailedFilesOnly()
+    {
+        var payload = new AgentConfigPayload(
+            ["AGENTS.md", ".vscode/tasks.json"],
+            [
+                new AgentFilePayload(".vscode/settings.json", "merged", ["editor.tabSize"], ["chat.useAgentSkills"], ["files.eol"], null),
+                new AgentFilePayload(".vscode/tasks.json", "unchanged", [], [], [], null),
+                new AgentFilePayload(".claude/settings.json", "error", [], [], [], "not valid JSON"),
+            ]);
+
+        var lines = payload.Lines();
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "agent config: copied AGENTS.md",
+                "agent config: .vscode/settings.json merged (added editor.tabSize; pinned chat.useAgentSkills; kept project value for files.eol)",
+                "agent config: .claude/settings.json not merged: not valid JSON",
+            },
+            lines.ToArray());
     }
 
     [TestMethod]

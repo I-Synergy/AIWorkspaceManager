@@ -20,4 +20,3 @@ out-test/
 *.log
 
 # Session/agent state
-.reasonix/

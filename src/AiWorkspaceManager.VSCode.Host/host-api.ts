@@ -38,6 +38,9 @@ async function guarded<T>(work: () => Promise<T>, log?: LogSink): Promise<Result
 export function createHostAPI(context: HostApiContext): HostAPI {
   const guard = <T>(work: () => Promise<T>): Promise<Result<T>> => guarded(work, context.log);
 
+  /** The last successful setup run, handed to the webview with `getBootstrap` so its merge outcome is visible. */
+  let lastSetup: BootstrapPayload | undefined;
+
   const root = (): string => {
     const workspaceRoot = context.workspaceRoot();
     if (!workspaceRoot) {
@@ -91,6 +94,7 @@ export function createHostAPI(context: HostApiContext): HostAPI {
           HasScript: isAvailable(),
           Materialize: materialize,
           Version: context.extensionVersion,
+          Setup: lastSetup,
         };
         return bootstrap;
       });
@@ -118,7 +122,11 @@ export function createHostAPI(context: HostApiContext): HostAPI {
 
     async bootstrap() {
       // Does not wait for `ready`: it *is* what activation waits for.
-      return guard(() => core<BootstrapPayload>("bootstrap", {}, false));
+      return guard(async () => {
+        const setup = await core<BootstrapPayload>("bootstrap", {}, false);
+        lastSetup = setup;
+        return setup;
+      });
     },
 
     async getProject() {

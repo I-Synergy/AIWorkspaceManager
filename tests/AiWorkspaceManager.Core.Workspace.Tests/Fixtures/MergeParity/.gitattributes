@@ -1,0 +1,2 @@
+# Parity fixtures are byte-exact (CRLF, BOM, missing final newline); git must not normalise them.
+* -text

@@ -1,0 +1,188 @@
+[
+  {
+    "name": "settings-commented-nested-pinned",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-nonpinned-conflict",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-trailing-commas",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-crlf",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-bom",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-empty-object",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-empty-object-newline",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-no-trailing-newline",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-missing",
+    "kind": "settings",
+    "hasInput": false,
+    "status": "created"
+  },
+  {
+    "name": "tasks-other-task",
+    "kind": "tasks",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "tasks-same-label-kept",
+    "kind": "tasks",
+    "hasInput": true,
+    "status": "unchanged"
+  },
+  {
+    "name": "tasks-missing-version",
+    "kind": "tasks",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "tasks-missing",
+    "kind": "tasks",
+    "hasInput": false,
+    "status": "created"
+  },
+  {
+    "name": "claude-pre-change",
+    "kind": "claude",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "claude-custom-hook-deny-env",
+    "kind": "claude",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "claude-already-current",
+    "kind": "claude",
+    "hasInput": true,
+    "status": "unchanged"
+  },
+  {
+    "name": "claude-missing",
+    "kind": "claude",
+    "hasInput": false,
+    "status": "created"
+  },
+  {
+    "name": "invalid-settings-duplicate-key",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "error"
+  },
+  {
+    "name": "invalid-settings-malformed",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "error"
+  },
+  {
+    "name": "invalid-tasks-malformed",
+    "kind": "tasks",
+    "hasInput": true,
+    "status": "error"
+  },
+  {
+    "name": "invalid-claude-duplicate-key",
+    "kind": "claude",
+    "hasInput": true,
+    "status": "error"
+  },
+  {
+    "name": "invalid-claude-malformed",
+    "kind": "claude",
+    "hasInput": true,
+    "status": "error"
+  },
+  {
+    "name": "settings-single-line-root",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-single-line-nested",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-comment-only-object",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-tab-indent",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "settings-trailing-comment-last",
+    "kind": "settings",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "tasks-empty-array-inline",
+    "kind": "tasks",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "tasks-trailing-commas",
+    "kind": "tasks",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "claude-legacy-mixed",
+    "kind": "claude",
+    "hasInput": true,
+    "status": "merged"
+  },
+  {
+    "name": "claude-crlf-comments",
+    "kind": "claude",
+    "hasInput": true,
+    "status": "merged"
+  }
+]

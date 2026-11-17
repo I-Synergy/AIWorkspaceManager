@@ -27,7 +27,7 @@ revision rather than a re-clone.
 
 ## The problems this solves
 
-Copilot, Claude Code and Reasonix/DeepSeek only follow the skills, agents,
+Copilot, Claude Code and other skills-standard agents only follow the skills, agents,
 instructions and prompts that are present in the repository. Getting that content there by
 hand is where teams lose time:
 
@@ -44,7 +44,7 @@ hand is where teams lose time:
   missing requirements surface only after install.
 - **Setup is manual.** A new repository needs the resolver, vocabulary,
   `AGENTS.md`, Copilot instructions, Claude settings, project folders and the
-  `.claude` / `.github` / `.reasonix` junctions — often by running several scripts.
+  `.claude` / `.github` / `.agents` links — often by running several scripts.
 - **Updates are risky.** Without a lock and content hashes, an update is a
   re-clone that can delete local changes, and removal has no explicit boundary.
 
@@ -58,7 +58,7 @@ hashes, and updates that are a diff against a pinned revision.
 | Keeping it current | Compares the pinned ref with the source's release tags and offers a one-click upgrade to the newest release |
 | Protecting local work | `local-modified` / `upstream-changed` / `conflict` states; nothing is overwritten without an explicit choice |
 | Knowing what is installed | Installed view grouped by health, with provenance, path, licence and install mode |
-| Setting up a repository | First activation writes the resolver, vocabulary, `AGENTS.md`, Copilot/Claude configuration, project folders and platform junctions |
+| Setting up a repository | First activation writes the resolver, vocabulary, `AGENTS.md`, Copilot/Claude configuration, project folders and platform links |
 | Removing safely | Removing edits the selection; files leave disk only through an explicit prune |
 | Working without a manifest | An implicit starter resolves the repository's own tree or the template, so Browse and Installed work immediately |
 
@@ -70,7 +70,7 @@ hashes, and updates that are a diff against a pinned revision.
 | **Installed** | What this repo has, grouped by state — needs attention first — and then by source, so it is clear which repository each item came from. Search and filter by kind / source / health (in sync, needs attention, not materialised), tick rows to remove several at once, plus sync, per-item **lock** (freeze edited content so update and sync never overwrite it), remove and prune for deselected leftovers |
 | **Updates** | Items whose catalog content moved upstream, with the four states (unchanged / upstream-changed / modified here / conflict) and *update all safe* — each section grouped by source — plus search and kind / source / ready-vs-conflict filters, and a banner when the pinned ref is older than the source's newest release tag |
 | **Presets** | Named selections that compose: adding one keeps every other preset and anything picked individually, and each card says exactly how many items it would add. Fourteen domain presets, alphabetical (Architecture, Aspire, Books & writing, Design, Devops, .NET Core / MAUI / Web & Blazor / WinUI / WPF, Review, Security), with **Tools** at 13, **Minimal** at 14 and **Everything** last; drawing on all four repositories, dependencies resolved |
-| **Settings** | Resolver status, project name/intention, **AI clients** (Claude Code default; Copilot and Reasonix opt-in), sources table (repo / ref / release / resolve / licence / hooks), maintenance actions |
+| **Settings** | Resolver status, project name/intention, **AI clients** (Claude Code default; Copilot and other skills-standard agents opt-in), sources table (repo / ref / release / resolve / licence / hooks), maintenance actions, and a **Report** block with the per-file result of the last setup or sync (created / merged / unchanged / conflicts kept / error) and the mirror report |
 
 Plus a status-bar-style launcher view in the Explorer with a drift badge, and
 command-palette entries: Open, Select Skills and Agents, Check for Updates,
@@ -120,9 +120,28 @@ Browse detail pane shows the real `sourcePath` (for example
 `plugins/dotnet-maui/skills/maui-performance`).
 
 Prompts are read from `prompts/` (`.prompt.md`, or plain `.md`) and installed
-under `.ai/prompts/`. Instructions and prompts are mirrored to
-`.claude/instructions/` + `.github/instructions/` and `.claude/commands/` +
-`.github/prompts/` respectively, like the skill and agent junctions.
+under `.ai/prompts/`. The prompt links are conditional: `.claude/commands` and
+`.github/prompts` point at `.ai/prompts/` only while that folder holds at least one
+file. A project with no installed prompts gets neither link. The Copilot harness
+does not load prompt files, so skills are the portable format. Browse and Installed
+show that as a tooltip on the Prompts kind.
+
+Instructions are not linked. Copilot reads `.github/instructions/` (a folder link).
+Claude Code reads path-scoped rules only from `.claude/rules/`, so the extension
+writes one regular file per instruction, `.claude/rules/{name}.instructions.md`,
+with `applyTo` mapped to `paths:` (no `paths:` for `**`/`**/*`). These copies are
+generated and carry a marker comment. A hand-written file with the same name is
+reported as a conflict and never overwritten, and generated files are removed only
+when their source is gone or Claude is disabled. The legacy `.claude/instructions`
+link is removed.
+
+Hooks run shell commands, so a source must opt in with `"allowHooks": true` in
+`.ai/ai.json` before one can be installed. A hook item is
+`.ai/hooks/<name>/hooks.json`, but Copilot only loads `.github/hooks/*.json` at
+the top level, so the adapter links one file per hook to
+`.github/hooks/<name>.json` rather than linking the folder. Claude Code reads
+hooks from `.claude/settings.json`, which setup merges from the template (see
+[Settings files are merged](#settings-files-are-merged)).
 
 [I-Synergy/AI](https://github.com/I-Synergy/AI) is the upstream project: pinning
 its `ref` to a release tag (for example `v1.6.0`) is what lets the Updates view
@@ -146,10 +165,45 @@ gets the template's supporting folders too (plans, patterns, reference, …).
 Existing files are never overwritten or removed; **Add template folders** /
 `catalog.py scaffold` copies only what is missing.
 
-New projects use **Claude Code by default**. Copilot and Reasonix are opt-in
-under **Settings → Clients**; each client gets junction folders over the same
-`.ai/` content, and disabling one removes only its junctions and generated
-instructions (never real project files or `.github/workflows`).
+New projects use **Claude Code by default**. Copilot and other skills-standard
+agents (`.agents/skills`, used by Codex and similar tools) are opt-in under
+**Settings → Clients**; each client gets folder links over the same `.ai/`
+content, and disabling one removes only its links and generated instructions
+(never real project files or `.github/workflows`). The client descriptions in
+Settings list what each client gets on disk.
+
+### Settings files are merged
+
+Setup never overwrites a project's `.vscode/settings.json`, `.vscode/tasks.json`
+or `.claude/settings.json`. It creates each file when it is missing and otherwise
+merges the template's copy into it, using the template's fragments in
+`.ai/reference/templates/vscode/` and `.ai/reference/templates/merge-rules.json`:
+
+- Missing keys are added. Objects merge key by key, so a project's
+  `terminal.integrated.env.windows` keeps its own variables and gains the MSBuild ones.
+- The pinned Copilot keys take the template's value. The comment the project wrote on
+  that line is kept, so it can describe an old value.
+- Any other conflicting value keeps the project's value and is reported as a conflict.
+- Tasks merge by `label`: an existing label is kept unchanged.
+- `.claude/settings.json`: the legacy hook commands are removed, template hooks are
+  added unless already present, and `permissions` lists are unioned. Other project hooks
+  and values are kept.
+- Comments, trailing commas and formatting survive, because the merge edits the text
+  rather than re-serialising the file. Invalid JSON (including duplicate keys) is never
+  written; the file is reported as an error.
+
+When the template ref has no merge fragments (an older template), the `.vscode` step is
+skipped. The template's own `.vscode` files are never copied. The outcome per file
+(created, merged with the added and pinned keys, unchanged, conflicts kept, or error)
+appears in the setup toast, in the Settings **Report** block, and in the output channel.
+
+### Sync conflicts
+
+Sync reports `CONFLICT` and exits non-zero when an adapter or generated path holds real
+content: a real directory where a link belongs, a hand-written file where a generated
+rule belongs, or real content at a retired path (`.claude/instructions`, or a prompt
+adapter while `.ai/prompts` is empty). Nothing there is deleted. The Settings **Report**
+block lists the generated rules and the retired links it changed or found.
 
 ## Screenshots
 
@@ -231,8 +285,9 @@ synthetic index varied by run (560–1,387 ms), so the index speedup is reported
 - Any folder. On first activation AI Workspace Manager sets it up from the template:
   `.ai/ai.json`, the vocabulary under `.ai/catalog/`, any template scripts the pinned source
   still ships, and the agent configuration: `AGENTS.md`,
-  `.github/copilot-instructions.md`, `.claude/settings.json` and
-  `.gitattributes`. A brand-new project also gets the supporting folders an
+  `.github/copilot-instructions.md` and `.gitattributes` (copied when missing), and
+  `.vscode/settings.json`, `.vscode/tasks.json` and `.claude/settings.json` (merged; see
+  [Settings files are merged](#settings-files-are-merged)). A brand-new project also gets the supporting folders an
   agent expects — `analysis`, `checklists`, `completed`, `patterns`, `plans`,
   `progress`, `project`, `reference` and `session-context.md` — once; an
   existing project is not re-seeded. Nothing project-owned is overwritten or

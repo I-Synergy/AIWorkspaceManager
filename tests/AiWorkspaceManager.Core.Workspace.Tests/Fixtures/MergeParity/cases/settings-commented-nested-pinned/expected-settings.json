@@ -1,0 +1,28 @@
+{
+    // my editor
+    "editor.tabSize": 2, // keep
+    "terminal.integrated.env.windows": {
+        "PIP_CONFIG_FILE": "${workspaceFolder}/pip.ini", // mine
+        "MSBUILDDISABLENODEREUSE": "1",
+        "DOTNET_CLI_USE_MSBUILD_SERVER": "0",
+        "UseSharedCompilation": "false",
+    },
+    "chat.useClaudeHooks": true, // I turned this off
+    /* block */
+    "files.autoSave": "off",
+    "chat.useAgentsMdFile": false,
+    "github.copilot.chat.cli.customAgents.enabled": true,
+    "chat.useAgentSkills": true,
+    "chat.includeApplyingInstructions": true,
+    "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+    "terminal.integrated.env.linux": {
+        "MSBUILDDISABLENODEREUSE": "1",
+        "DOTNET_CLI_USE_MSBUILD_SERVER": "0",
+        "UseSharedCompilation": "false"
+    },
+    "terminal.integrated.env.osx": {
+        "MSBUILDDISABLENODEREUSE": "1",
+        "DOTNET_CLI_USE_MSBUILD_SERVER": "0",
+        "UseSharedCompilation": "false"
+    },
+}

@@ -348,7 +348,8 @@ public sealed class SelectionEngine
 
         if (manifest.Root["clients"] is not System.Text.Json.Nodes.JsonArray array)
         {
-            throw new ResolverException("clients must be a list of 'claude', 'copilot' and/or 'reasonix'");
+            throw new ResolverException(
+                $"clients must be a list of {string.Join(", ", ResolverDefaults.Clients.Select(name => $"'{name}'"))}");
         }
 
         var names = array
@@ -356,7 +357,8 @@ public sealed class SelectionEngine
             .Select(node => node!.GetValue<string>().Trim().ToLowerInvariant())
             .Where(name => name.Length > 0)
             .ToHashSet(StringComparer.Ordinal);
-        var unknown = names.Except(ResolverDefaults.Clients).OrderBy(name => name, StringComparer.Ordinal).ToList();
+        var known = ResolverDefaults.Clients.ToHashSet(StringComparer.Ordinal);
+        var unknown = names.Except(known).OrderBy(name => name, StringComparer.Ordinal).ToList();
         if (unknown.Count > 0)
         {
             throw new ResolverException(

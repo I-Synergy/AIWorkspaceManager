@@ -1,0 +1,10 @@
+{
+    // my editor
+    "editor.tabSize": 2, // keep
+    "terminal.integrated.env.windows": {
+        "PIP_CONFIG_FILE": "${workspaceFolder}/pip.ini", // mine
+    },
+    "chat.useClaudeHooks": false, // I turned this off
+    /* block */
+    "files.autoSave": "off",
+}

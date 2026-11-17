@@ -131,6 +131,7 @@ public sealed class WorkspaceSetupServiceTests
         StringAssert.Contains(text, "node_modules/");
         Assert.AreEqual(1, text.Split(".ai/tmp").Length - 1);
         StringAssert.Contains(text, ".claude/skills/");
+        StringAssert.Contains(text, ".agents/skills/");
     }
 
     [TestMethod]
@@ -200,5 +201,160 @@ public sealed class WorkspaceSetupServiceTests
 
         Assert.AreEqual("created", setup.EnsureGitignore());
         StringAssert.Contains(File.ReadAllText(Path.Combine(paths.Root, ".gitignore")), ".ai/tmp/");
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void EnsureGitignore_IgnoresGeneratedClaudeRulesAndKeepsGithubHooks()
+    {
+        using var temp = new TempDirectory();
+        var setup = Subject(temp, out var paths);
+        Directory.CreateDirectory(paths.Root);
+
+        setup.EnsureGitignore();
+
+        var text = File.ReadAllText(Path.Combine(paths.Root, ".gitignore"));
+        StringAssert.Contains(text, ".claude/rules/*.instructions.md");
+        StringAssert.Contains(text, ".github/hooks/");
+    }
+
+    private static void WriteTemplateVsCode(TempDirectory temp)
+    {
+        temp.Write("template/.ai/reference/templates/merge-rules.json", """
+            {
+              "version": 1,
+              "vscode": { "pinnedSettings": ["chat.useAgentsMdFile"] },
+              "claude": { "legacyHookCommands": ["python .ai/scripts/sync-platforms.py"] }
+            }
+            """);
+        temp.Write("template/.ai/reference/templates/vscode/settings.json", """
+            {
+              "chat.useAgentsMdFile": false,
+              "chat.useAgentSkills": true
+            }
+            """);
+        temp.Write("template/.ai/reference/templates/vscode/tasks.json", """
+            {
+              "version": "2.0.0",
+              "tasks": [ { "label": "Link .ai", "type": "shell", "command": "python" } ]
+            }
+            """);
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void InstallAgentConfig_CreatesMissingVsCodeFilesFromTheFragments()
+    {
+        using var temp = new TempDirectory();
+        var setup = Subject(temp, out var paths);
+        WriteTemplateVsCode(temp);
+
+        var summary = setup.InstallAgentConfig(Manifest("copilot"));
+
+        CollectionAssert.Contains(summary.Copied.ToArray(), ".vscode/settings.json");
+        CollectionAssert.Contains(summary.Copied.ToArray(), ".vscode/tasks.json");
+        Assert.IsTrue(File.Exists(Path.Combine(paths.Root, ".vscode", "settings.json")));
+        Assert.IsTrue(File.Exists(Path.Combine(paths.Root, ".vscode", "tasks.json")));
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void InstallAgentConfig_MergesAnExistingVsCodeSettingsFileAndPreservesItsComments()
+    {
+        using var temp = new TempDirectory();
+        var setup = Subject(temp, out var paths);
+        WriteTemplateVsCode(temp);
+        temp.Write("project/.vscode/settings.json", "{\n  // mine\n  \"chat.useAgentsMdFile\": true,\n}\n");
+
+        var summary = setup.InstallAgentConfig(Manifest("copilot"));
+
+        var text = File.ReadAllText(Path.Combine(paths.Root, ".vscode", "settings.json"));
+        StringAssert.Contains(text, "// mine");
+        Assert.IsFalse(JsoncMerger.ParseObject(text)!["chat.useAgentsMdFile"]!.GetValue<bool>());
+        Assert.IsTrue(JsoncMerger.ParseObject(text)!["chat.useAgentSkills"]!.GetValue<bool>());
+        var merged = summary.Merged.Single(file => file.RelativePath == ".vscode/settings.json");
+        Assert.AreEqual(MergeStatus.Merged, merged.Result.Status);
+        CollectionAssert.Contains(merged.Result.Pinned.ToArray(), "chat.useAgentsMdFile");
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void InstallAgentConfig_IsIdempotent()
+    {
+        using var temp = new TempDirectory();
+        var setup = Subject(temp, out var paths);
+        WriteTemplateVsCode(temp);
+        setup.InstallAgentConfig(Manifest("copilot"));
+        var settings = Path.Combine(paths.Root, ".vscode", "settings.json");
+        var before = File.ReadAllBytes(settings);
+
+        var second = setup.InstallAgentConfig(Manifest("copilot"));
+
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(settings));
+        Assert.IsEmpty(second.Copied);
+        Assert.IsTrue(second.Merged.All(file => file.Result.Status == MergeStatus.Unchanged));
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void InstallAgentConfig_SkipsTheVsCodeMergeWhenTheTemplateHasNoMergeRules()
+    {
+        using var temp = new TempDirectory();
+        var setup = Subject(temp, out var paths);
+        temp.Write("template/.ai/reference/templates/vscode/settings.json", "{ \"chat.useAgentSkills\": true }\n");
+        temp.Write("template/.vscode/settings.json", "{ \"python.testing.pytestEnabled\": true }\n");
+
+        var summary = setup.InstallAgentConfig(Manifest("copilot"));
+
+        Assert.IsFalse(File.Exists(Path.Combine(paths.Root, ".vscode", "settings.json")));
+        Assert.IsEmpty(summary.Merged);
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void InstallAgentConfig_LeavesVsCodeAloneWhenCopilotIsNotSelected()
+    {
+        using var temp = new TempDirectory();
+        var setup = Subject(temp, out var paths);
+        WriteTemplateVsCode(temp);
+
+        var summary = setup.InstallAgentConfig(Manifest("claude"));
+
+        Assert.IsFalse(File.Exists(Path.Combine(paths.Root, ".vscode", "settings.json")));
+        Assert.IsFalse(summary.Merged.Any(file => file.RelativePath.StartsWith(".vscode/", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void InstallAgentConfig_MergesTheClaudeSettingsOnlyForTheClaudeClient()
+    {
+        using var temp = new TempDirectory();
+        var setup = Subject(temp, out var paths);
+        WriteTemplateVsCode(temp);
+        temp.Write("template/.claude/settings.json", """
+            {
+              "hooks": {
+                "Stop": [ { "hooks": [ { "type": "command", "command": "bash .ai/scripts/hooks/py.sh stop_build.py" } ] } ]
+              }
+            }
+            """);
+        temp.Write("project/.claude/settings.json", """
+            {
+              "hooks": {
+                "Stop": [ { "hooks": [ { "type": "command", "command": "python .ai/scripts/sync-platforms.py" } ] } ]
+              }
+            }
+            """);
+
+        var copilotOnly = setup.InstallAgentConfig(Manifest("copilot"));
+        var untouched = File.ReadAllText(Path.Combine(paths.Root, ".claude", "settings.json"));
+        var summary = setup.InstallAgentConfig(Manifest("claude"));
+
+        Assert.IsFalse(copilotOnly.Merged.Any(file => file.RelativePath == ".claude/settings.json"));
+        StringAssert.Contains(untouched, "sync-platforms.py");
+        var text = File.ReadAllText(Path.Combine(paths.Root, ".claude", "settings.json"));
+        Assert.IsFalse(text.Contains("sync-platforms.py", StringComparison.Ordinal));
+        StringAssert.Contains(text, "stop_build.py");
+        Assert.AreEqual(MergeStatus.Merged, summary.Merged.Single(file => file.RelativePath == ".claude/settings.json").Result.Status);
     }
 }

@@ -16,7 +16,7 @@ public sealed class ProjectInfoServiceTests
         + "**Instructions:** Copy this to `.ai/session-context.md` and customize for your project.\n\n"
         + "# {ApplicationName} Session Context\n\n"
         + "**Last Updated:** [DateTime]\n"
-        + "**Updated By:** [Claude Code | Copilot | Reasonix Code | User]\n"
+        + "**Updated By:** [Claude Code | Copilot | User]\n"
         + "**Project Version:** [Version]\n\n"
         + "**Application Name:** [{ApplicationName}]\n"
         + "**Purpose:** [What this application does]\n";

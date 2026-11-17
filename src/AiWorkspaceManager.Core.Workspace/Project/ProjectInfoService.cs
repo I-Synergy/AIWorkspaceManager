@@ -96,7 +96,7 @@ public sealed class ProjectInfoService
                 ("[{ApplicationName}]", name),
                 ("[What this application does]", purpose),
                 ("[DateTime]", today),
-                ("**Updated By:** [Claude Code | Copilot | Reasonix Code | User]",
+                ("**Updated By:** [Claude Code | Copilot | User]",
                  "**Updated By:** AI Workspace Manager"),
             ]))
         {

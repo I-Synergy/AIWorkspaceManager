@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit";
-import { statusClass, statusLabel } from "../logic";
+import { kindTooltip, statusClass, statusLabel } from "../logic";
 import { sharedStyles } from "../styles/shared.css";
 
 export class StatePill extends LitElement {
@@ -87,7 +87,9 @@ export function kindIcon(kind: string) {
   } else if (kind === "prompt") {
     path = "M3 2.5h10v8H8l-3 2.5V10.5H3v-8Zm2 2v1h6v-1H5Zm0 3v1h4V7.5H5Z";
   }
-  return html`<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+  const tooltip = kindTooltip(kind);
+  return html`<svg viewBox="0 0 16 16" width="14" height="14" role="img" aria-label=${tooltip}>
+    <title>${tooltip}</title>
     <path d=${path} fill="currentColor" />
   </svg>`;
 }

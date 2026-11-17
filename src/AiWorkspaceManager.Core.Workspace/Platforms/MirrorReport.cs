@@ -7,4 +7,5 @@ namespace AiWorkspaceManager.Core.Workspace;
 public sealed record MirrorReport(
     int Changed,
     IReadOnlyList<string> Lines,
-    IReadOnlyList<string> RemovedDirectories);
+    IReadOnlyList<string> RemovedDirectories,
+    IReadOnlyList<string> Conflicts);

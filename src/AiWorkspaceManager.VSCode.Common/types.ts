@@ -18,7 +18,7 @@ export function fail<T = never>(error: string): Result<T> {
 export type ItemKind = "skill" | "agent" | "instruction" | "prompt" | "plugin" | "hook";
 
 /** AI clients whose platform folders are generated. */
-export type ClientName = "claude" | "copilot" | "reasonix";
+export type ClientName = "claude" | "copilot" | "agents";
 
 export interface Bootstrap {
   WorkspaceName: string;
@@ -26,6 +26,8 @@ export interface Bootstrap {
   HasScript: boolean;
   Materialize: "link" | "copy";
   Version: string;
+  /** The last setup run in this session (activation runs it), so Settings can show its merge outcome. */
+  Setup?: BootstrapPayload;
 }
 
 export interface SourceRow {
@@ -194,6 +196,32 @@ export interface BootstrapPayload {
   scaffold: { copied: string[]; skipped: string[] };
   /** Legacy markers / old index removed during upgrade cleanup. */
   legacyRemoved?: string[];
+  /** Per-file outcome of merging the template's VS Code and Claude settings. */
+  agentConfig?: AgentConfigReport;
+  /** The platform-mirror report: generated rules, retired links and conflicts. */
+  mirror?: string[];
+}
+
+/** What a merge did to one client file: created, merged, unchanged, or an error that wrote nothing. */
+export type AgentFileStatus = "created" | "merged" | "unchanged" | "error";
+
+/** One merged client file (`.vscode/settings.json`, `.vscode/tasks.json`, `.claude/settings.json`). */
+export interface AgentFileReport {
+  relativePath: string;
+  status: AgentFileStatus;
+  /** Template keys (or task labels) that were added to the project's file. */
+  added: string[];
+  /** Pinned template keys whose value replaced the project's. */
+  pinned: string[];
+  /** Keys where the project's value was kept over a conflicting template value. */
+  conflicts: string[];
+  error: string | null;
+}
+
+/** The agent-configuration step: client files copied when missing, and one row per merged file. */
+export interface AgentConfigReport {
+  copied: string[];
+  files: AgentFileReport[];
 }
 
 /** The project name/intention and what writing them touched. */

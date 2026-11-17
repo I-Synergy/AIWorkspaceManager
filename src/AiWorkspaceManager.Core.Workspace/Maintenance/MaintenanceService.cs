@@ -59,7 +59,7 @@ public sealed class MaintenanceService
         }
 
         var tooling = setup.InstallTooling(sourceRoot, overwrite: true, reference: SourceCatalog.SourceRef(manifest));
-        _ = setup.InstallAgentConfig(manifest.Root);
+        var agentConfig = AgentConfigPayload.From(setup.InstallAgentConfig(manifest.Root));
         var scaffold = existing is null
             ? setup.InstallScaffold(sourceRoot)
             : new FileCopySummary([], []);
@@ -72,7 +72,7 @@ public sealed class MaintenanceService
             _ = project.Describe(project.DetectedName(), string.Empty);
         }
 
-        _ = new PlatformMirrorService(queries.Paths).Sync(manifest);
+        var mirror = new PlatformMirrorService(queries.Paths).Sync(manifest);
         var instructions = new InstructionDocumentService(queries).Update(manifest.Root);
 
         var selected = ResolverDefaults.Kinds.Sum(kind => manifest.GetStringArray(ResolverDefaults.ManifestKeys[kind]).Count);
@@ -86,7 +86,9 @@ public sealed class MaintenanceService
             legacyRemoved,
             gitignore,
             readme,
-            instructions);
+            instructions,
+            agentConfig,
+            mirror.Lines);
 
         var lines = new List<string> { $"wrote: {queries.Paths.ManifestPath} ({selected} selected item(s))" };
         if (addedSources.Count > 0)
@@ -96,6 +98,7 @@ public sealed class MaintenanceService
 
         lines.Add($"tooling: {tooling.Copied.Count} copied, {tooling.Missing.Count} missing");
         lines.Add($"scaffold: {scaffold.Copied.Count} copied, {scaffold.Skipped.Count} kept");
+        lines.AddRange(agentConfig.Lines());
         if (legacyRemoved.Count > 0)
         {
             lines.Add($"legacy state: {legacyRemoved.Count} file(s) removed");
@@ -110,12 +113,12 @@ public sealed class MaintenanceService
         var manifest = queries.ManifestOrStarter();
         var sourceRoot = queries.Sources.TemplateRoot(manifest);
         var summary = setup.InstallScaffold(sourceRoot);
-        _ = setup.InstallAgentConfig(manifest.Root);
+        var agentConfig = AgentConfigPayload.From(setup.InstallAgentConfig(manifest.Root));
         var payload = new ScaffoldPayload(summary.Copied, summary.Skipped);
         return new OperationOutcome(
             new CliResult(
                 0,
-                $"scaffold: {summary.Copied.Count} copied, {summary.Skipped.Count} kept\n",
+                $"scaffold: {summary.Copied.Count} copied, {summary.Skipped.Count} kept\n" + JoinLines(agentConfig.Lines()),
                 string.Empty),
             payload);
     }
@@ -140,7 +143,8 @@ public sealed class MaintenanceService
             var name = raw.Trim().ToLowerInvariant();
             if (!ResolverDefaults.Clients.Contains(name))
             {
-                throw new ResolverException($"unknown client '{raw}' — choose from {string.Join(", ", ResolverDefaults.Clients)}");
+                throw new ResolverException(
+                    $"unknown client '{raw}' — choose from {string.Join(", ", ResolverDefaults.Clients)}");
             }
 
             if (!names.Contains(name))
@@ -454,16 +458,19 @@ public sealed class MaintenanceService
         var manifest = data.Bind(manifestPath);
         manifest.Save();
 
+        var agentLines = new List<string>();
         if (fresh)
         {
             var sourceRoot = queries.Sources.TemplateRoot(manifest);
             _ = setup.InstallScaffold(sourceRoot);
-            _ = setup.InstallAgentConfig(manifest.Root);
+            // The sync below sees these files as already merged, so their outcome is reported here.
+            agentLines.AddRange(AgentConfigPayload.From(setup.InstallAgentConfig(manifest.Root)).Lines());
         }
 
         var sync = operations.Sync();
+        var result = sync.Result with { Stdout = JoinLines(agentLines) + sync.Result.Stdout };
         return new OperationOutcome(
-            sync.Result,
+            result,
             new Dictionary<string, object?>(StringComparer.Ordinal) { ["init"] = true });
     }
 

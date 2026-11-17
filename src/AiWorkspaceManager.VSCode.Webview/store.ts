@@ -1,15 +1,29 @@
 import type {
-  Bootstrap, BrowsePayload, ClientName, CliResult, ItemKind, PresetsPayload, ProjectInfo,
-  ReleasePayload, Result, UpdatePayload,
+  AgentFileReport, Bootstrap, BootstrapPayload, BrowsePayload, ClientName, CliResult, ItemKind,
+  PresetsPayload, ProjectInfo, ReleasePayload, Result, UpdatePayload,
 } from "../AiWorkspaceManager.VSCode.Common/types";
 import { hostApi, router } from "./registrations";
-import { itemKey, pickedIds } from "./logic";
+import { agentConfigSummary, itemKey, pickedIds } from "./logic";
 import type { InstalledState, UpdateState } from "./logic";
 import type { Tab } from "./router";
 
 export interface Toast {
   kind: "info" | "error";
   text: string;
+}
+
+/**
+ * The last setup or sync result, shown in Settings: the per-file merges (setup only) and the
+ * report lines (the mirror report, plus the sync output).
+ */
+export interface RunReport {
+  title: string;
+  files: AgentFileReport[];
+  lines: string[];
+}
+
+function reportFromSetup(setup: BootstrapPayload): RunReport {
+  return { title: "Setup", files: setup.agentConfig?.files ?? [], lines: setup.mirror ?? [] };
 }
 
 function describeFailure(result: Result<CliResult>): string {
@@ -27,6 +41,8 @@ function describeFailure(result: Result<CliResult>): string {
  */
 class Store extends EventTarget {
   bootstrap: Bootstrap | undefined;
+  /** The latest setup or sync outcome; Settings renders it when present. */
+  report: RunReport | undefined;
   browse: BrowsePayload | undefined;
   presets: PresetsPayload | undefined;
   updates: UpdatePayload | undefined;
@@ -106,6 +122,10 @@ class Store extends EventTarget {
       if (!bootstrap.ok) {
         this.error = bootstrap.error;
         return;
+      }
+      // Activation ran the setup before the webview asked; show its merge outcome until a newer run replaces it.
+      if (bootstrap.value.Setup && !this.report) {
+        this.report = reportFromSetup(bootstrap.value.Setup);
       }
       const browse = await hostApi.getBrowse({});
       if (!browse.ok) {
@@ -201,9 +221,13 @@ class Store extends EventTarget {
       const kept = tooling.protected.length + scaffold.skipped.length;
       const cleaned = legacyRemoved?.length ?? 0;
       const cleanup = cleaned ? ` ${cleaned} old state file(s) cleaned.` : "";
-      this.notify("info", (created
+      const files = result.value.agentConfig?.files ?? [];
+      const settings = agentConfigSummary(files);
+      const failed = files.some((file) => file.status === "error");
+      this.report = reportFromSetup(result.value);
+      this.notify(failed ? "error" : "info", (created
         ? `Set up ${path} (${selected} selected, ${copied} file(s) copied).`
-        : `${copied} template file(s) added, ${kept} kept.`) + cleanup);
+        : `${copied} template file(s) added, ${kept} kept.`) + cleanup + (settings ? ` ${settings}` : ""));
       await this.loadAsync();
       return true;
     } catch (error) {
@@ -314,12 +338,26 @@ class Store extends EventTarget {
     }
   }
 
-  /** Run a mutating action, then reload so the UI reflects the new truth. */
-  async runAsync(label: string, action: () => Promise<Result<CliResult>>): Promise<boolean> {
+  /**
+   * Run a mutating action, then reload so the UI reflects the new truth. With `keepReport`, the
+   * action's output lines (the sync and mirror report) become the Settings report.
+   */
+  async runAsync(
+    label: string,
+    action: () => Promise<Result<CliResult>>,
+    keepReport = false,
+  ): Promise<boolean> {
     this.loading = true;
     this.fire();
     try {
       const result = await action();
+      if (keepReport && result.ok) {
+        this.report = {
+          title: label,
+          files: [],
+          lines: result.value.stdout.split(/\r?\n/).filter((line) => line.trim().length > 0),
+        };
+      }
       if (!result.ok || result.value.code !== 0) {
         this.notify("error", `${label}: ${describeFailure(result)}`);
         return false;
@@ -412,7 +450,7 @@ class Store extends EventTarget {
   }
 
   sync(): Promise<boolean> {
-    return this.runAsync("Sync", () => hostApi.sync({}));
+    return this.runAsync("Sync", () => hostApi.sync({}), true);
   }
 
   /** Update the rows the user can see, not everything the command would find. */
@@ -459,6 +497,7 @@ class Store extends EventTarget {
     return this.runAsync(
       `Clients: ${clients.join(", ") || "none"}`,
       () => hostApi.setClients({ Clients: clients }),
+      true,
     );
   }
 }
