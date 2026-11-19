@@ -172,4 +172,64 @@ public sealed class InstructionDocumentServiceTests
         StringAssert.Contains(copilot, ".github/agents/lead.md");
         StringAssert.Contains(copilot, ".claude/settings.json");
     }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void Update_EmitsTheCopilotRuntimeSectionAfterTheReferenceBlock()
+    {
+        var (temp, queries, manifest) = Scenario("claude", "copilot");
+        using var scope = temp;
+        temp.Write("template/.ai/reference/copilot-runtime.md", "## Runtime\n\nRun in the orchestrator.\n");
+        temp.Write("project/AGENTS.md", "# AGENTS\n\nRead `.ai/session-context.md` first.\n");
+        temp.Write(
+            "project/.github/copilot-instructions.md",
+            "## Project Context\n\nSee `.ai/project/architecture.md`.\n");
+
+        _ = new InstructionDocumentService(queries).Update(manifest);
+
+        var copilot = File.ReadAllText(Path.Combine(queries.Paths.Root, ".github", "copilot-instructions.md"));
+        const string start = "<!-- ai-workspace-manager:copilot-runtime:start -->";
+        const string end = "<!-- ai-workspace-manager:copilot-runtime:end -->";
+        StringAssert.Contains(copilot, start);
+        StringAssert.Contains(copilot, end);
+        StringAssert.Contains(copilot, "Run in the orchestrator.");
+
+        var runtimeStart = copilot.IndexOf(start, StringComparison.Ordinal);
+        var referenceEnd = copilot.IndexOf("<!-- ai-workspace-manager:copilot-reference:end -->", StringComparison.Ordinal);
+        Assert.IsTrue(referenceEnd < runtimeStart, "the runtime section must follow the reference block");
+        Assert.IsTrue(copilot.IndexOf(end, StringComparison.Ordinal) > runtimeStart);
+
+        // The generated note must name the generator, or a reader regenerates with the wrong tool.
+        StringAssert.Contains(copilot, "Regenerate with `python .ai/scripts/sync-instructions.py`.");
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void Update_IsIdempotentWhenTheTemplateShipsARuntimeSection()
+    {
+        var (temp, queries, manifest) = Scenario("claude", "copilot");
+        using var scope = temp;
+        temp.Write("template/.ai/reference/copilot-runtime.md", "## Runtime\n\nRun in the orchestrator.\n");
+        temp.Write("project/AGENTS.md", "# AGENTS\n\nRead `.ai/session-context.md` first.\n");
+        var service = new InstructionDocumentService(queries);
+
+        service.Update(manifest);
+        var second = service.Update(manifest);
+
+        Assert.AreEqual("unchanged", second[".github/copilot-instructions.md"]);
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void Update_SkipsTheRuntimeSectionWhenTheTemplateDoesNotShipIt()
+    {
+        var (temp, queries, manifest) = Scenario("claude", "copilot");
+        using var scope = temp;
+        temp.Write("project/AGENTS.md", "# AGENTS\n\nRead `.ai/session-context.md` first.\n");
+
+        _ = new InstructionDocumentService(queries).Update(manifest);
+
+        var copilot = File.ReadAllText(Path.Combine(queries.Paths.Root, ".github", "copilot-instructions.md"));
+        Assert.IsFalse(copilot.Contains("copilot-runtime:start", StringComparison.Ordinal));
+    }
 }

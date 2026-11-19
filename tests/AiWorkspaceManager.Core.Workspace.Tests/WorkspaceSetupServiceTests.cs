@@ -193,6 +193,28 @@ public sealed class WorkspaceSetupServiceTests
 
     [TestMethod]
     [TestCategory("Unit")]
+    public void InstallTooling_PrefersTheBundledAdapterValidatorOverAStaleTemplate()
+    {
+        using var temp = new TempDirectory();
+        var paths = new WorkspacePaths(Path.Combine(temp.Root, "project"));
+        var bundle = Path.Combine(temp.Root, "bundle");
+        var template = Path.Combine(temp.Root, "template");
+
+        // The pinned template predates the fix; the bundled copy carries it.
+        temp.Write("template/.ai/tests/validate-adapters.py", "# stale\n");
+        temp.Write("bundle/.ai/tests/validate-adapters.py", "# corrected\n");
+        temp.Write("project/.ai/ai.json", Manifest("claude").ToJsonString());
+        var queries = new WorkspaceQueries(paths, new GitSourceFetcher(paths, offline: true), offline: true, bundle);
+        var setup = new WorkspaceSetupService(queries);
+
+        _ = setup.InstallTooling(template);
+
+        var installed = File.ReadAllText(Path.Combine(paths.Root, ".ai", "tests", "validate-adapters.py"));
+        Assert.AreEqual("# corrected\n", installed);
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
     public void EnsureGitignore_CreatesTheFileWhenItDoesNotExist()
     {
         using var temp = new TempDirectory();
