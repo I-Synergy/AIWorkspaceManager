@@ -5,6 +5,7 @@
 // gitignore and the one-time catalog-layout migration. It must never overwrite a project file.
 
 using System.Text.Json.Nodes;
+using AiWorkspaceManager.Core.Catalog;
 using AiWorkspaceManager.Core.Workspace;
 using AiWorkspaceManager.TestUtilities;
 
@@ -211,6 +212,37 @@ public sealed class WorkspaceSetupServiceTests
 
         var installed = File.ReadAllText(Path.Combine(paths.Root, ".ai", "tests", "validate-adapters.py"));
         Assert.AreEqual("# corrected\n", installed);
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void InstallTooling_RefreshesTheCopilotRuntimeSection()
+    {
+        using var temp = new TempDirectory();
+        var paths = new WorkspacePaths(Path.Combine(temp.Root, "project"));
+        var template = Path.Combine(temp.Root, "template");
+        temp.Write("template/.ai/reference/copilot-runtime.md", "## Runtime\n\nnew wording\n");
+        temp.Write("project/.ai/ai.json", Manifest("claude").ToJsonString());
+        // The project scaffolded the file once; the template has since changed it.
+        temp.Write("project/.ai/reference/copilot-runtime.md", "## Runtime\n\nold wording\n");
+        var recorded = ContentHash.FileSha(
+            Path.Combine(paths.Root, ".ai", "reference", "copilot-runtime.md"));
+        temp.Write("project/.ai/tooling.json", $$"""
+            {
+              "version": 1,
+              "source": "template",
+              "files": [
+                { "path": ".ai/reference/copilot-runtime.md", "sha256": "{{recorded}}", "origin": "template" }
+              ]
+            }
+            """);
+        var queries = new WorkspaceQueries(paths, new GitSourceFetcher(paths, offline: true), offline: true);
+        var setup = new WorkspaceSetupService(queries);
+
+        _ = setup.InstallTooling(template, overwrite: true);
+
+        var installed = File.ReadAllText(Path.Combine(paths.Root, ".ai", "reference", "copilot-runtime.md"));
+        StringAssert.Contains(installed, "new wording");
     }
 
     [TestMethod]
