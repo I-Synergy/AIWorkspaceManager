@@ -54,6 +54,13 @@ public sealed class WorkspaceSetupService
         ".ai/scripts/hygiene-lint.py",
         ".ai/scripts/migrate-to-ai.py",
         ".ai/tests/validate-release.py",
+        // Emitted into copilot-instructions.md on every regeneration, and validate-adapters.py
+        // TEST 5 compares the embedded block against this file. Left out, a project keeps the
+        // copy it scaffolded once and the two drift apart on the first template update.
+        ".ai/reference/copilot-runtime.md",
+        // Emitted into copilot-instructions.md on every regeneration, and validate-adapters.py
+        // TEST 5 compares the embedded block against this file. Left out, a project keeps the
+        // copy it scaffolded once and the two drift apart on the first template update.
         "catalog/presets.json",
         "catalog/categories.json",
         "catalog/schemas/ai.schema.json",
