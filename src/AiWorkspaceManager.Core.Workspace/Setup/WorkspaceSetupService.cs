@@ -61,10 +61,16 @@ public sealed class WorkspaceSetupService
         "catalog/schemas/lock.schema.json",
     ];
 
+    /// <summary>
+    /// Checks the extension can correct even when a project's pinned template predates the fix.
+    /// These win over the pinned template's copy, so a project stops failing a check the
+    /// extension already ships a corrected version of.
+    /// </summary>
     private static readonly HashSet<string> BundledPreferred = new(StringComparer.Ordinal)
     {
         ".ai/scripts/sync-platforms.py",
         ".ai/tests/validate-release.py",
+        ".ai/tests/validate-adapters.py",
     };
 
     private readonly WorkspaceQueries queries;

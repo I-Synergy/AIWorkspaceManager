@@ -19,6 +19,12 @@ public sealed partial class InstructionDocumentService
     private const string CopilotGenerated = MarkerPrefix + "generated-from-agents -->";
     private const string CopilotReferenceStart = MarkerPrefix + "copilot-reference:start -->";
     private const string CopilotReferenceEnd = MarkerPrefix + "copilot-reference:end -->";
+    private const string CopilotRuntimeStart = MarkerPrefix + "copilot-runtime:start -->";
+    private const string CopilotRuntimeEnd = MarkerPrefix + "copilot-runtime:end -->";
+    private const string CopilotRuntimeFile = ".ai/reference/copilot-runtime.md";
+    private const string CopilotNote =
+        "<!-- Generated from AGENTS.md. Edit AGENTS.md, not this file. "
+        + "Regenerate with `python .ai/scripts/sync-instructions.py`. -->";
     private const string InstalledStart = MarkerPrefix + "installed:start -->";
     private const string InstalledEnd = MarkerPrefix + "installed:end -->";
     private const string LegacyMarkerPrefix = "<!-- ai-manager:";
@@ -130,7 +136,7 @@ public sealed partial class InstructionDocumentService
         if (agentsText.Length > 0)
         {
             var existing = File.Exists(copilotPath) ? File.ReadAllText(copilotPath) : null;
-            var document = CopilotDocument(agentsText, existing, names);
+            var document = CopilotDocument(agentsText, existing, names, ReadCopilotRuntime(manifest));
             if (document is not null && document != existing)
             {
                 var parent = Path.GetDirectoryName(copilotPath);
@@ -310,7 +316,7 @@ public sealed partial class InstructionDocumentService
         return string.Join("\n\n", parts);
     }
 
-    private static string? CopilotDocument(string agentsText, string? existing, InstalledNames names)
+    private static string? CopilotDocument(string agentsText, string? existing, InstalledNames names, string? runtime)
     {
         var reference = string.Empty;
         if (existing is not null)
@@ -332,7 +338,7 @@ public sealed partial class InstructionDocumentService
             "# GitHub Copilot Instructions",
             string.Empty,
             CopilotGenerated,
-            "<!-- Generated from AGENTS.md. Edit AGENTS.md, not this file. -->",
+            CopilotNote,
             string.Empty,
             CopilotPaths(agentsText.Trim()),
         };
@@ -344,7 +350,31 @@ public sealed partial class InstructionDocumentService
             parts.Add(CopilotReferenceEnd);
         }
 
+        // The runtime section follows the reference block: a reader (and the template's own
+        // validate-adapters.py) expects the generated body, then the preserved reference block,
+        // then the runtime instructions it replaces.
+        if (!string.IsNullOrWhiteSpace(runtime))
+        {
+            parts.Add(string.Empty);
+            parts.Add(CopilotRuntimeStart);
+            parts.Add(runtime.Trim());
+            parts.Add(CopilotRuntimeEnd);
+        }
+
         return string.Join("\n", parts).TrimEnd() + "\n";
+    }
+
+    /// <summary>
+    /// The template-owned Copilot runtime section, copied fresh on every regeneration.
+    /// A template that does not ship it yields <c>null</c> and the section is skipped, so a
+    /// project pinned to an older template keeps working.
+    /// </summary>
+    private string? ReadCopilotRuntime(ManifestDocument manifest)
+    {
+        var entry = SourceCatalog.EntryNamed(manifest, ResolverDefaults.TemplateSource);
+        var sourceRoot = queries.Sources.SourceRoot(ResolverDefaults.TemplateSource, entry);
+        var path = Path.Combine(sourceRoot, CopilotRuntimeFile.Replace('/', Path.DirectorySeparatorChar));
+        return File.Exists(path) ? File.ReadAllText(path) : null;
     }
 
     private static string NormalizeMarkers(string text) =>
