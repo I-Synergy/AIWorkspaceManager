@@ -11,6 +11,7 @@ namespace AiWorkspaceManager.Core.Workspace;
 public sealed class ProjectInfoService
 {
     private const string ReadmeMarker = "[Describe the project's purpose.]";
+    private const string ReadmeFile = "README.md";
 
     private readonly WorkspacePaths paths;
 
@@ -68,7 +69,7 @@ public sealed class ProjectInfoService
     public string EnsureReadme()
     {
         Directory.CreateDirectory(paths.Root);
-        var path = Path.Combine(paths.Root, "README.md");
+        var path = Path.Combine(paths.Root, ReadmeFile);
         if (File.Exists(path))
         {
             return "kept";
@@ -85,6 +86,36 @@ public sealed class ProjectInfoService
         var written = new List<string>();
         var skipped = new List<string>();
 
+        DescribeSessionContext(name, intention, purpose, today, written, skipped);
+        DescribeProjectDocuments(name, intention, purpose, written, skipped);
+
+        var info = new JsonObject
+        {
+            ["version"] = 1,
+            ["name"] = name,
+            ["intention"] = intention,
+            ["updated"] = today,
+        };
+        JsonFiles.Write(paths.ProjectInfoPath, info);
+
+        foreach (var relative in FillApplicationName(name).Where(relative => !written.Contains(relative)))
+        {
+            written.Add(relative);
+        }
+
+        DescribeReadme(name, intention, written);
+
+        return new ProjectInfoPayload(name, intention, DetectedName(), written, skipped);
+    }
+
+    private void DescribeSessionContext(
+        string name,
+        string intention,
+        string purpose,
+        string today,
+        List<string> written,
+        List<string> skipped)
+    {
         var session = Path.Combine(paths.AiDirectory, "session-context.md");
         if (FillTemplate(
             session,
@@ -101,28 +132,38 @@ public sealed class ProjectInfoService
             ]))
         {
             written.Add(".ai/session-context.md");
+            return;
         }
-        else if (File.Exists(session))
+
+        if (!File.Exists(session))
         {
-            var text = File.ReadAllText(session);
-            if (text.Contains("**Updated By:** AI Manager", StringComparison.Ordinal)
-                || text.Contains("**Updated By:** AI Workspace Manager", StringComparison.Ordinal))
-            {
-                if (intention.Length > 0)
-                {
-                    text = UpdateLine(text, "**Purpose:**", intention);
-                }
-
-                text = UpdateLine(text, "**Last Updated:**", today);
-                File.WriteAllText(session, text);
-                written.Add(".ai/session-context.md");
-            }
-            else
-            {
-                skipped.Add(".ai/session-context.md");
-            }
+            return;
         }
 
+        var text = File.ReadAllText(session);
+        if (!text.Contains("**Updated By:** AI Manager", StringComparison.Ordinal)
+            && !text.Contains("**Updated By:** AI Workspace Manager", StringComparison.Ordinal))
+        {
+            skipped.Add(".ai/session-context.md");
+            return;
+        }
+
+        if (intention.Length > 0)
+        {
+            text = UpdateLine(text, "**Purpose:**", intention);
+        }
+
+        File.WriteAllText(session, UpdateLine(text, "**Last Updated:**", today));
+        written.Add(".ai/session-context.md");
+    }
+
+    private void DescribeProjectDocuments(
+        string name,
+        string intention,
+        string purpose,
+        List<string> written,
+        List<string> skipped)
+    {
         foreach (var (relative, title) in new[]
         {
             (".ai/project/architecture.md", "Project Architecture"),
@@ -137,74 +178,62 @@ public sealed class ProjectInfoService
                 [$"**Project:** {name}", $"**Intention:** {purpose}", string.Empty]))
             {
                 written.Add(relative);
+                continue;
             }
-            else if (File.Exists(path))
+
+            if (!File.Exists(path))
             {
-                var text = File.ReadAllText(path);
-                if (text.Contains("**Project:**", StringComparison.Ordinal)
-                    && text.Contains("**Intention:**", StringComparison.Ordinal))
-                {
-                    text = UpdateLine(text, "**Project:**", name);
-                    if (intention.Length > 0)
-                    {
-                        text = UpdateLine(text, "**Intention:**", intention);
-                    }
-
-                    File.WriteAllText(path, text);
-                    written.Add(relative);
-                }
-                else
-                {
-                    skipped.Add(relative);
-                }
+                continue;
             }
-        }
 
-        var info = new JsonObject
-        {
-            ["version"] = 1,
-            ["name"] = name,
-            ["intention"] = intention,
-            ["updated"] = today,
-        };
-        JsonFiles.Write(paths.ProjectInfoPath, info);
-
-        foreach (var relative in FillApplicationName(name))
-        {
-            if (!written.Contains(relative))
+            var text = File.ReadAllText(path);
+            if (!text.Contains("**Project:**", StringComparison.Ordinal)
+                || !text.Contains("**Intention:**", StringComparison.Ordinal))
             {
-                written.Add(relative);
+                skipped.Add(relative);
+                continue;
             }
-        }
 
-        var readme = Path.Combine(paths.Root, "README.md");
+            text = UpdateLine(text, "**Project:**", name);
+            if (intention.Length > 0)
+            {
+                text = UpdateLine(text, "**Intention:**", intention);
+            }
+
+            File.WriteAllText(path, text);
+            written.Add(relative);
+        }
+    }
+
+    private void DescribeReadme(string name, string intention, List<string> written)
+    {
+        var readme = Path.Combine(paths.Root, ReadmeFile);
         if (!File.Exists(readme))
         {
             File.WriteAllText(readme, $"# {name}\n\n{(intention.Length > 0 ? intention : ReadmeMarker)}\n");
-            written.Add("README.md");
+            written.Add(ReadmeFile);
+            return;
         }
-        else
-        {
-            var text = File.ReadAllText(readme);
-            if (text.Contains(ReadmeMarker, StringComparison.Ordinal))
-            {
-                text = text.Replace(ReadmeMarker, intention.Length > 0 ? intention : ReadmeMarker, StringComparison.Ordinal);
-                var lines = text.Split('\n');
-                for (var index = 0; index < lines.Length; index++)
-                {
-                    if (lines[index].StartsWith("# ", StringComparison.Ordinal))
-                    {
-                        lines[index] = $"# {name}";
-                        break;
-                    }
-                }
 
-                File.WriteAllText(readme, string.Join("\n", lines));
-                written.Add("README.md");
+        var text = File.ReadAllText(readme);
+        if (!text.Contains(ReadmeMarker, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        text = text.Replace(ReadmeMarker, intention.Length > 0 ? intention : ReadmeMarker, StringComparison.Ordinal);
+        var lines = text.Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (lines[index].StartsWith("# ", StringComparison.Ordinal))
+            {
+                lines[index] = $"# {name}";
+                break;
             }
         }
 
-        return new ProjectInfoPayload(name, intention, DetectedName(), written, skipped);
+        File.WriteAllText(readme, string.Join("\n", lines));
+        written.Add(ReadmeFile);
     }
 
     private List<string> FillApplicationName(string name)

@@ -15,11 +15,13 @@ public sealed class Frontmatter
 {
     private static readonly Regex KeyPattern = new(
         "^([A-Za-z0-9_-]+)\\s*:\\s*(.*)$",
-        RegexOptions.CultureInvariant);
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1));
 
     private static readonly Regex InlineListPattern = new(
         "^\\[(?<body>.*)\\]$",
-        RegexOptions.CultureInvariant);
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1));
 
     private readonly Dictionary<string, string> scalars = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<string>> lists = new(StringComparer.Ordinal);
@@ -130,22 +132,9 @@ public sealed class Frontmatter
             var key = match.Groups[1].Value;
             var value = StripComment(match.Groups[2].Value).Trim();
 
-            if (value is ">" or ">-" or "|" or "|-" || value is ">+" or "|+")
+            if (IsBlockScalar(value))
             {
-                var collected = new List<string>();
-                while (index < lines.Length && IsIndented(lines[index]))
-                {
-                    var content = lines[index].Trim();
-                    if (content.Length > 0)
-                    {
-                        collected.Add(content);
-                    }
-
-                    index++;
-                }
-
-                var joiner = value.StartsWith('|') ? "\n" : " ";
-                result.scalars[key] = string.Join(joiner, collected);
+                result.scalars[key] = ReadBlockScalar(lines, ref index, value);
                 continue;
             }
 
@@ -158,40 +147,7 @@ public sealed class Frontmatter
 
             if (value.Length == 0)
             {
-                // A block list is the only nested shape we read; any other nested map is
-                // irrelevant to the catalog fields and is skipped.
-                var items = new List<string>();
-                while (index < lines.Length)
-                {
-                    var candidate = lines[index].TrimEnd('\r');
-                    var trimmed = candidate.TrimStart();
-                    if (trimmed.StartsWith("- ", StringComparison.Ordinal)
-                        || string.Equals(trimmed, "-", StringComparison.Ordinal))
-                    {
-                        var entry = trimmed.Length > 1 ? trimmed[2..].Trim() : string.Empty;
-                        items.Add(Unquote(StripComment(entry).Trim()));
-                        index++;
-                        continue;
-                    }
-
-                    if (trimmed.Length == 0)
-                    {
-                        index++;
-                        continue;
-                    }
-
-                    break;
-                }
-
-                if (items.Count > 0)
-                {
-                    result.lists[key] = items.Where(item => item.Length > 0).ToList();
-                }
-                else
-                {
-                    result.scalars[key] = string.Empty;
-                }
-
+                ReadNestedValue(result, key, lines, ref index);
                 continue;
             }
 
@@ -199,6 +155,67 @@ public sealed class Frontmatter
         }
 
         return result;
+    }
+
+    private static bool IsBlockScalar(string value) =>
+        value is ">" or ">-" or "|" or "|-" or ">+" or "|+";
+
+    /// <summary>Reads the indented body of a <c>|</c> or <c>&gt;</c> scalar.</summary>
+    private static string ReadBlockScalar(string[] lines, ref int index, string marker)
+    {
+        var collected = new List<string>();
+        while (index < lines.Length && IsIndented(lines[index]))
+        {
+            var content = lines[index].Trim();
+            if (content.Length > 0)
+            {
+                collected.Add(content);
+            }
+
+            index++;
+        }
+
+        var joiner = marker.StartsWith('|') ? "\n" : " ";
+        return string.Join(joiner, collected);
+    }
+
+    /// <summary>
+    /// A key with an empty value: a block list is the only nested shape we read; any other
+    /// nested map is irrelevant to the catalog fields and is skipped.
+    /// </summary>
+    private static void ReadNestedValue(Frontmatter result, string key, string[] lines, ref int index)
+    {
+        var items = new List<string>();
+        while (index < lines.Length)
+        {
+            var candidate = lines[index].TrimEnd('\r');
+            var trimmed = candidate.TrimStart();
+            if (trimmed.StartsWith("- ", StringComparison.Ordinal)
+                || string.Equals(trimmed, "-", StringComparison.Ordinal))
+            {
+                var entry = trimmed.Length > 1 ? trimmed[2..].Trim() : string.Empty;
+                items.Add(Unquote(StripComment(entry).Trim()));
+                index++;
+                continue;
+            }
+
+            if (trimmed.Length == 0)
+            {
+                index++;
+                continue;
+            }
+
+            break;
+        }
+
+        if (items.Count > 0)
+        {
+            result.lists[key] = items.Where(item => item.Length > 0).ToList();
+        }
+        else
+        {
+            result.scalars[key] = string.Empty;
+        }
     }
 
     private static bool IsIndented(string line) =>

@@ -11,6 +11,13 @@ namespace AiWorkspaceManager.Core.Workspace;
 /// </summary>
 public sealed class WorkspaceSetupService
 {
+    /// <summary>Key of the tooling record's file list, and of each entry's path and digest.</summary>
+    private const string FilesKey = "files";
+    private const string PathKey = "path";
+    private const string Sha256Key = "sha256";
+
+    private const string ClaudeSettingsFile = "settings.json";
+
     public static readonly IReadOnlyList<string> TemplateDirectories =
         ["analysis", "checklists", "completed", "patterns", "plans", "progress", "project", "reference"];
 
@@ -117,21 +124,21 @@ public sealed class WorkspaceSetupService
         if (File.Exists(Paths.ToolingRecordPath))
         {
             var record = LoadToolingRecord();
-            if (record["files"] is JsonArray files)
+            if (record[FilesKey] is JsonArray files)
             {
                 foreach (var file in files.OfType<JsonObject>())
                 {
-                    var path = file["path"]?.GetValue<string>() ?? string.Empty;
+                    var path = file[PathKey]?.GetValue<string>() ?? string.Empty;
                     if (path.StartsWith("catalog/", StringComparison.Ordinal))
                     {
-                        file["path"] = ".ai/" + path;
+                        file[PathKey] = ".ai/" + path;
                     }
                 }
 
-                record["files"] = new JsonArray(files
+                record[FilesKey] = new JsonArray(files
                     .OfType<JsonObject>()
-                    .OrderBy(file => file["path"]?.GetValue<string>() ?? string.Empty, StringComparer.Ordinal)
-                    .Select(file => (JsonNode)file.DeepClone())
+                    .OrderBy(file => file[PathKey]?.GetValue<string>() ?? string.Empty, StringComparer.Ordinal)
+                    .Select(file => file.DeepClone())
                     .ToArray());
             }
 
@@ -239,7 +246,7 @@ public sealed class WorkspaceSetupService
     private void MergeClaudeSettings(string sourceRoot, List<string> copied, List<AgentFileMerge> merged)
     {
         const string relative = ".claude/settings.json";
-        var template = Path.Combine(sourceRoot, ".claude", "settings.json");
+        var template = Path.Combine(sourceRoot, ".claude", ClaudeSettingsFile);
         if (!File.Exists(template))
         {
             return;
@@ -247,7 +254,7 @@ public sealed class WorkspaceSetupService
 
         // An older template without merge-rules.json has no legacy list; the merge then only adds what the template ships.
         var legacy = MergeRules.Load(sourceRoot)?.LegacyHookCommands ?? Array.Empty<string>();
-        var target = Path.Combine(Paths.Root, ".claude", "settings.json");
+        var target = Path.Combine(Paths.Root, ".claude", ClaudeSettingsFile);
         var result = ClaudeSettingsMerge.Merge(ReadProjectFile(target), File.ReadAllText(template), legacy);
         ApplyMerge(relative, target, result, copied, merged);
     }
@@ -266,11 +273,11 @@ public sealed class WorkspaceSetupService
         }
 
         var fragments = Path.Combine(sourceRoot, ".ai", "reference", "templates", "vscode");
-        var settingsFragment = Path.Combine(fragments, "settings.json");
+        var settingsFragment = Path.Combine(fragments, ClaudeSettingsFile);
         if (File.Exists(settingsFragment))
         {
             var pinned = new HashSet<string>(rules.PinnedSettings, StringComparer.Ordinal);
-            var target = Path.Combine(Paths.Root, ".vscode", "settings.json");
+            var target = Path.Combine(Paths.Root, ".vscode", ClaudeSettingsFile);
             var result = VsCodeSettingsMerge.Merge(ReadProjectFile(target), File.ReadAllText(settingsFragment), pinned);
             ApplyMerge(".vscode/settings.json", target, result, copied, merged);
         }
@@ -330,8 +337,8 @@ public sealed class WorkspaceSetupService
             {
                 recorded[destination] = new JsonObject
                 {
-                    ["path"] = destination,
-                    ["sha256"] = ContentHash.FileSha(target),
+                    [PathKey] = destination,
+                    [Sha256Key] = ContentHash.FileSha(target),
                     ["origin"] = "template",
                 };
                 added = true;
@@ -345,7 +352,7 @@ public sealed class WorkspaceSetupService
 
         record["version"] = 1;
         record["source"] = ResolverDefaults.TemplateSource;
-        record["files"] = SortedFiles(recorded.Values);
+        record[FilesKey] = SortedFiles(recorded.Values);
         SaveToolingRecord(record);
     }
 
@@ -371,78 +378,26 @@ public sealed class WorkspaceSetupService
         {
             var destination = ToolingDestination(relative);
             var target = Path.Combine(Paths.Root, destination);
-            var source = Path.Combine(sourceRoot, relative);
-            var origin = "template";
-            if (BundledPreferred.Contains(relative) && !string.IsNullOrEmpty(bundled))
+            var (source, origin) = ResolveToolingSource(sourceRoot, bundled, relative);
+            if (source is null)
             {
-                var fallback = Path.Combine(bundled, relative);
-                if (File.Exists(fallback))
-                {
-                    source = fallback;
-                    origin = "bundled";
-                }
+                missing.Add(destination);
+                continue;
             }
 
-            if (!File.Exists(source))
+            var existing = ClassifyExistingTooling(target, destination, source, recorded, overwrite);
+            if (existing == ExistingTooling.Adopted)
             {
-                var fallback = string.IsNullOrEmpty(bundled) ? null : Path.Combine(bundled, relative);
-                if (fallback is not null && File.Exists(fallback))
-                {
-                    source = fallback;
-                    origin = "bundled";
-                }
-                else
-                {
-                    missing.Add(destination);
-                    continue;
-                }
+                changed = true;
             }
 
-            if (File.Exists(target))
+            if (existing is ExistingTooling.Protected or ExistingTooling.Skipped or ExistingTooling.Unchanged)
             {
-                var current = ContentHash.FileSha(target);
-                if (!recorded.TryGetValue(destination, out var entry))
-                {
-                    recorded[destination] = new JsonObject
-                    {
-                        ["path"] = destination,
-                        ["sha256"] = current,
-                        ["origin"] = origin,
-                    };
-                    changed = true;
-                }
-                else if (!string.Equals(current, entry["sha256"]?.GetValue<string>(), StringComparison.Ordinal))
-                {
-                    protectedFiles.Add(destination);
-                    continue;
-                }
-
-                if (!overwrite)
-                {
-                    skipped.Add(destination);
-                    continue;
-                }
-
-                if (string.Equals(ContentHash.FileSha(source), current, StringComparison.Ordinal))
-                {
-                    unchanged.Add(destination);
-                    continue;
-                }
+                RecordExisting(existing, destination, skipped, unchanged, protectedFiles);
+                continue;
             }
 
-            var parent = Path.GetDirectoryName(target);
-            if (!string.IsNullOrEmpty(parent))
-            {
-                Directory.CreateDirectory(parent);
-            }
-
-            File.Copy(source, target, overwrite: true);
-            recorded[destination] = new JsonObject
-            {
-                ["path"] = destination,
-                ["sha256"] = ContentHash.FileSha(target),
-                ["origin"] = origin,
-            };
+            CopyToolingFile(source, target, destination, origin, recorded);
             copied.Add(destination);
             changed = true;
         }
@@ -456,11 +411,139 @@ public sealed class WorkspaceSetupService
                 record["ref"] = reference;
             }
 
-            record["files"] = SortedFiles(recorded.Values);
+            record[FilesKey] = SortedFiles(recorded.Values);
             SaveToolingRecord(record);
         }
 
         return new ToolingSummary(copied, skipped, unchanged, missing, protectedFiles);
+    }
+
+    /// <summary>Files a target into the list its classification belongs to.</summary>
+    private static void RecordExisting(
+        ExistingTooling existing,
+        string destination,
+        List<string> skipped,
+        List<string> unchanged,
+        List<string> protectedFiles)
+    {
+        switch (existing)
+        {
+            case ExistingTooling.Protected:
+                protectedFiles.Add(destination);
+                break;
+            case ExistingTooling.Skipped:
+                skipped.Add(destination);
+                break;
+            case ExistingTooling.Unchanged:
+                unchanged.Add(destination);
+                break;
+        }
+    }
+
+    /// <summary>What an already-present target means for this install.</summary>
+    private enum ExistingTooling
+    {
+        /// <summary>No target yet, or the overwrite policy says replace it.</summary>
+        Absent,
+
+        /// <summary>Present and unrecorded: recorded now, then left alone.</summary>
+        Adopted,
+
+        /// <summary>The project changed it since the template wrote it.</summary>
+        Protected,
+
+        /// <summary>Present and identical to what the template ships.</summary>
+        Unchanged,
+
+        /// <summary>Present and unchanged upstream, but overwriting is off.</summary>
+        Skipped,
+    }
+
+    /// <summary>Where a tooling file is read from, and which origin to record for it.</summary>
+    private static (string? Source, string Origin) ResolveToolingSource(
+        string sourceRoot,
+        string? bundled,
+        string relative)
+    {
+        var source = Path.Combine(sourceRoot, relative);
+        var origin = "template";
+        var fallback = string.IsNullOrEmpty(bundled) ? null : Path.Combine(bundled, relative);
+
+        if (BundledPreferred.Contains(relative) && fallback is not null && File.Exists(fallback))
+        {
+            return (fallback, "bundled");
+        }
+
+        if (File.Exists(source))
+        {
+            return (source, origin);
+        }
+
+        return fallback is not null && File.Exists(fallback) ? (fallback, "bundled") : (null, origin);
+    }
+
+    /// <summary>
+    /// Decides what an existing target means: unrecorded files are adopted, files the project
+    /// changed are protected, identical files are unchanged, and the rest are skipped unless the
+    /// caller asked to overwrite.
+    /// </summary>
+    private static ExistingTooling ClassifyExistingTooling(
+        string target,
+        string destination,
+        string source,
+        Dictionary<string, JsonObject> recorded,
+        bool overwrite)
+    {
+        if (!File.Exists(target))
+        {
+            return ExistingTooling.Absent;
+        }
+
+        var current = ContentHash.FileSha(target);
+        if (!recorded.TryGetValue(destination, out var entry))
+        {
+            recorded[destination] = ToolingEntry(destination, current, "template");
+            return ExistingTooling.Adopted;
+        }
+
+        if (!string.Equals(current, entry[Sha256Key]?.GetValue<string>(), StringComparison.Ordinal))
+        {
+            return ExistingTooling.Protected;
+        }
+
+        if (!overwrite)
+        {
+            return ExistingTooling.Skipped;
+        }
+
+        return string.Equals(ContentHash.FileSha(source), current, StringComparison.Ordinal)
+            ? ExistingTooling.Unchanged
+            : ExistingTooling.Absent;
+    }
+
+    private static JsonObject ToolingEntry(string destination, string sha256, string origin) =>
+        new()
+        {
+            [PathKey] = destination,
+            [Sha256Key] = sha256,
+            ["origin"] = origin,
+        };
+
+    private static void CopyToolingFile(
+        string source,
+        string target,
+        string destination,
+        string origin,
+        Dictionary<string, JsonObject> recorded)
+    {
+        var parent = Path.GetDirectoryName(target);
+        if (!string.IsNullOrEmpty(parent))
+        {
+            Directory.CreateDirectory(parent);
+        }
+
+        File.Copy(source, target, overwrite: true);
+        recorded[destination] = ToolingEntry(destination, ContentHash.FileSha(target), origin);
     }
 
     /// <summary>Ignore resolver state and the platform links; existing lines are kept.</summary>
@@ -507,40 +590,39 @@ public sealed class WorkspaceSetupService
     public static List<string> TemplateToolingFiles(string sourceRoot)
     {
         var files = new List<string>(ToolingFiles);
-        var scripts = Path.Combine(sourceRoot, ".ai", "scripts");
-        if (Directory.Exists(scripts))
-        {
-            foreach (var entry in Directory.EnumerateFiles(scripts, "*.py").OrderBy(path => path, StringComparer.Ordinal))
-            {
-                var relative = Path.GetRelativePath(sourceRoot, entry).Replace('\\', '/');
-                if (!files.Contains(relative))
-                {
-                    files.Add(relative);
-                }
-            }
-        }
-
-        var tests = Path.Combine(sourceRoot, ".ai", "tests");
-        if (Directory.Exists(tests))
-        {
-            foreach (var entry in Directory.EnumerateFiles(tests, "*", SearchOption.AllDirectories)
-                .OrderBy(path => path, StringComparer.Ordinal))
-            {
-                if (entry.Contains("__pycache__", StringComparison.Ordinal)
-                    || entry.EndsWith(".pyc", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                var relative = Path.GetRelativePath(sourceRoot, entry).Replace('\\', '/');
-                if (!files.Contains(relative))
-                {
-                    files.Add(relative);
-                }
-            }
-        }
-
+        AddRelativeFiles(files, sourceRoot, Path.Combine(sourceRoot, ".ai", "scripts"), "*.py", SearchOption.TopDirectoryOnly);
+        AddRelativeFiles(files, sourceRoot, Path.Combine(sourceRoot, ".ai", "tests"), "*", SearchOption.AllDirectories);
         return files;
+    }
+
+    /// <summary>Adds the files under one template directory, skipping caches and duplicates.</summary>
+    private static void AddRelativeFiles(
+        List<string> files,
+        string sourceRoot,
+        string directory,
+        string pattern,
+        SearchOption option)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var entry in Directory.EnumerateFiles(directory, pattern, option)
+            .OrderBy(path => path, StringComparer.Ordinal))
+        {
+            if (entry.Contains("__pycache__", StringComparison.Ordinal)
+                || entry.EndsWith(".pyc", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var relative = Path.GetRelativePath(sourceRoot, entry).Replace('\\', '/');
+            if (!files.Contains(relative))
+            {
+                files.Add(relative);
+            }
+        }
     }
 
     public JsonObject LoadToolingRecord()
@@ -550,7 +632,7 @@ public sealed class WorkspaceSetupService
         {
             ["version"] = 1,
             ["source"] = ResolverDefaults.TemplateSource,
-            ["files"] = new JsonArray(),
+            [FilesKey] = new JsonArray(),
         };
     }
 
@@ -588,14 +670,14 @@ public sealed class WorkspaceSetupService
     private static Dictionary<string, JsonObject> RecordedTooling(JsonObject record)
     {
         var result = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
-        if (record["files"] is not JsonArray files)
+        if (record[FilesKey] is not JsonArray files)
         {
             return result;
         }
 
         foreach (var entry in files.OfType<JsonObject>())
         {
-            var path = entry["path"]?.GetValue<string>();
+            var path = entry[PathKey]?.GetValue<string>();
             if (!string.IsNullOrEmpty(path))
             {
                 result[path] = entry;
@@ -607,7 +689,7 @@ public sealed class WorkspaceSetupService
 
     private static JsonArray SortedFiles(IEnumerable<JsonObject> entries) =>
         new(entries
-            .OrderBy(entry => entry["path"]?.GetValue<string>() ?? string.Empty, StringComparer.Ordinal)
-            .Select(entry => (JsonNode)entry.DeepClone())
+            .OrderBy(entry => entry[PathKey]?.GetValue<string>() ?? string.Empty, StringComparer.Ordinal)
+            .Select(entry => entry.DeepClone())
             .ToArray());
 }

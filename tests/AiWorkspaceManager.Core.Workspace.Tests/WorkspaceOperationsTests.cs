@@ -27,6 +27,25 @@ public sealed class WorkspaceOperationsTests
     private const string SyncSourceStyle =
         "---\ndescription: House style\n---\n";
 
+    /// <summary>
+    /// The shape the real template uses: `review-solution` names its dependencies in `requires:`,
+    /// and the `reviewer` agent names the skills it drives in `skills:`.
+    /// </summary>
+    private const string SyncSourceReviewSolution =
+        "---\nname: review-solution\ndescription: Reviews a repo\nrequires:\n  - verify-config\n  - gap-review\n---\n";
+
+    private const string SyncSourceVerifyConfig =
+        "---\nname: verify-config\ndescription: Audits config\n---\n";
+
+    private const string SyncSourceGapReview =
+        "---\nname: gap-review\ndescription: Checks the design\nrequires:\n  - code-reviewer\n---\n";
+
+    private const string SyncSourceCodeReviewer =
+        "---\nname: code-reviewer\ndescription: Reviews code\n---\n";
+
+    private const string SyncSourceReviewerAgent =
+        "---\nname: reviewer\ndescription: Reviews work\nskills:\n  - code-reviewer\n---\n";
+
     private static (TempDirectory Temp, WorkspacePaths Paths, WorkspaceOperations Operations) SyncScenario()
     {
         var temp = new TempDirectory();
@@ -202,6 +221,221 @@ public sealed class WorkspaceOperationsTests
 
     [TestMethod]
     [TestCategory("Unit")]
+    public void Install_SelectsAndMaterialisesTheDependenciesOfTheItem()
+    {
+        using var temp = new TempDirectory();
+        temp.Write("template/.ai/skills/alpha/SKILL.md", SyncSourceAlpha);
+        temp.Write("template/.ai/skills/beta/SKILL.md", SyncSourceBeta);
+        temp.Write("template/.ai/skills/gamma/SKILL.md", "---\nname: gamma\ndescription: Gamma skill\nrequires:\n  - beta\n---\n");
+        temp.Write("workspace/.ai/catalog/presets.json", "{\"presets\":{}}");
+        temp.Write(
+            "workspace/.ai/ai.json",
+            """
+            {
+              "version": 1,
+              "sources": { "template": { "repo": "I-Synergy/AI", "ref": "v1", "path": "../template" } },
+              "skills": [],
+              "agents": [],
+              "materialize": "copy",
+              "exclude": []
+            }
+            """);
+        var paths = new WorkspacePaths(Path.Combine(temp.Root, "workspace"));
+        var queries = new WorkspaceQueries(paths, new GitSourceFetcher(paths, offline: true), offline: true);
+        var operations = new WorkspaceOperations(queries);
+
+        var outcome = operations.Install(["gamma"]);
+
+        Assert.AreEqual(0, outcome.Result.Code);
+        Assert.AreEqual(
+            "gamma,beta,alpha",
+            string.Join(",", queries.LoadManifest()!.GetStringArray("skills")));
+        Assert.IsTrue(File.Exists(Path.Combine(paths.Root, ".ai", "skills", "alpha", "SKILL.md")));
+        Assert.IsTrue(File.Exists(Path.Combine(paths.Root, ".ai", "skills", "beta", "SKILL.md")));
+        Assert.IsTrue(File.Exists(Path.Combine(paths.Root, ".ai", "skills", "gamma", "SKILL.md")));
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void Add_DoesNotListAnAlreadySelectedDependencyAsAdded()
+    {
+        var (temp, _, operations) = SyncScenario();
+        using var scope = temp;
+
+        var outcome = operations.Add(["beta"]);
+
+        Assert.AreEqual(0, outcome.Result.Code);
+        var payload = (AddPayload)outcome.Payload!;
+        Assert.IsEmpty(payload.Added);
+        Assert.IsEmpty(payload.Dependencies);
+        CollectionAssert.Contains(operations.Queries.LoadManifest()!.GetStringArray("skills").ToArray(), "beta");
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void Install_SelectsTheTransitiveDependenciesOfASkillAndItsAgent()
+    {
+        using var temp = new TempDirectory();
+        temp.Write("template/.ai/skills/review-solution/SKILL.md", SyncSourceReviewSolution);
+        temp.Write("template/.ai/skills/verify-config/SKILL.md", SyncSourceVerifyConfig);
+        temp.Write("template/.ai/skills/gap-review/SKILL.md", SyncSourceGapReview);
+        temp.Write("template/.ai/skills/code-reviewer/SKILL.md", SyncSourceCodeReviewer);
+        temp.Write("template/.ai/agents/reviewer.agent.md", SyncSourceReviewerAgent);
+        temp.Write("workspace/.ai/catalog/presets.json", "{\"presets\":{}}");
+        temp.Write(
+            "workspace/.ai/ai.json",
+            """
+            {
+              "version": 1,
+              "sources": { "template": { "repo": "I-Synergy/AI", "ref": "v1", "path": "../template" } },
+              "skills": [],
+              "agents": [],
+              "materialize": "copy",
+              "exclude": []
+            }
+            """);
+        var paths = new WorkspacePaths(Path.Combine(temp.Root, "workspace"));
+        var queries = new WorkspaceQueries(paths, new GitSourceFetcher(paths, offline: true), offline: true);
+        var operations = new WorkspaceOperations(queries);
+
+        var outcome = operations.Install(["review-solution"]);
+
+        Assert.AreEqual(0, outcome.Result.Code);
+        var skills = queries.LoadManifest()!.GetStringArray("skills");
+        CollectionAssert.AreEquivalent(
+            new[] { "review-solution", "verify-config", "gap-review", "code-reviewer" },
+            skills.ToArray());
+        // Every one of them is materialised, not just the one the user clicked.
+        foreach (var skill in skills)
+        {
+            Assert.IsTrue(
+                File.Exists(Path.Combine(paths.Root, ".ai", "skills", skill, "SKILL.md")),
+                $"{skill} was not materialised");
+        }
+
+        var payload = (InstallPayload)outcome.Payload!;
+        // The install pulled the three required skills in on top of the one that was clicked.
+        Assert.AreEqual(
+            "code-reviewer<-gap-review,gap-review<-review-solution,verify-config<-review-solution",
+            string.Join(",", payload.Dependencies
+                .Select(entry => $"{ItemId.Display(entry.Id)}<-{entry.RequiredBy}")
+                .OrderBy(text => text, StringComparer.Ordinal)));
+        Assert.AreEqual(
+            "template:code-reviewer=create,template:gap-review=create,template:review-solution=create,template:verify-config=create",
+            string.Join(",", payload.Actions
+                .Select(action => $"{action.Id}={action.Action}")
+                .OrderBy(text => text, StringComparer.Ordinal)));
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void Install_PullsInTheSkillsAnAgentDeclares()
+    {
+        using var temp = new TempDirectory();
+        temp.Write("template/.ai/skills/code-reviewer/SKILL.md", SyncSourceCodeReviewer);
+        temp.Write("template/.ai/agents/reviewer.agent.md", SyncSourceReviewerAgent);
+        temp.Write("workspace/.ai/catalog/presets.json", "{\"presets\":{}}");
+        temp.Write(
+            "workspace/.ai/ai.json",
+            """
+            {
+              "version": 1,
+              "sources": { "template": { "repo": "I-Synergy/AI", "ref": "v1", "path": "../template" } },
+              "skills": [],
+              "agents": [],
+              "materialize": "copy",
+              "exclude": []
+            }
+            """);
+        var paths = new WorkspacePaths(Path.Combine(temp.Root, "workspace"));
+        var queries = new WorkspaceQueries(paths, new GitSourceFetcher(paths, offline: true), offline: true);
+        var operations = new WorkspaceOperations(queries);
+
+        var outcome = operations.Install(["reviewer"]);
+
+        Assert.AreEqual(0, outcome.Result.Code);
+        CollectionAssert.Contains(queries.LoadManifest()!.GetStringArray("agents").ToArray(), "reviewer");
+        CollectionAssert.Contains(queries.LoadManifest()!.GetStringArray("skills").ToArray(), "code-reviewer");
+        Assert.IsTrue(File.Exists(Path.Combine(paths.Root, ".ai", "skills", "code-reviewer", "SKILL.md")));
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void Install_ReportsTheDependenciesItPulledInSoTheHostCanSaySo()
+    {
+        using var temp = new TempDirectory();
+        temp.Write("template/.ai/skills/review-solution/SKILL.md", SyncSourceReviewSolution);
+        temp.Write("template/.ai/skills/verify-config/SKILL.md", SyncSourceVerifyConfig);
+        temp.Write("template/.ai/skills/gap-review/SKILL.md", SyncSourceGapReview);
+        temp.Write("template/.ai/skills/code-reviewer/SKILL.md", SyncSourceCodeReviewer);
+        temp.Write("workspace/.ai/catalog/presets.json", "{\"presets\":{}}");
+        temp.Write(
+            "workspace/.ai/ai.json",
+            """
+            {
+              "version": 1,
+              "sources": { "template": { "repo": "I-Synergy/AI", "ref": "v1", "path": "../template" } },
+              "skills": [],
+              "agents": [],
+              "materialize": "copy",
+              "exclude": []
+            }
+            """);
+        var paths = new WorkspacePaths(Path.Combine(temp.Root, "workspace"));
+        var queries = new WorkspaceQueries(paths, new GitSourceFetcher(paths, offline: true), offline: true);
+        var operations = new WorkspaceOperations(queries);
+
+        var outcome = operations.Install(["review-solution"]);
+
+        Assert.AreEqual(0, outcome.Result.Code);
+        var payload = (InstallPayload)outcome.Payload!;
+        Assert.AreEqual(0, payload.Result.Code);
+        Assert.AreEqual(
+            "code-reviewer<-gap-review,gap-review<-review-solution,verify-config<-review-solution",
+            string.Join(",", payload.Dependencies
+                .Select(entry => $"{ItemId.Display(entry.Id)}<-{entry.RequiredBy}")
+                .OrderBy(text => text, StringComparer.Ordinal)));
+
+        // Installing it again selects nothing new, so the host must stay quiet.
+        var again = (InstallPayload)operations.Install(["review-solution"]).Payload!;
+        Assert.IsEmpty(again.Dependencies);
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
+    public void Sync_ReportsTheDependenciesItPulledIn()
+    {
+        using var temp = new TempDirectory();
+        temp.Write("template/.ai/skills/alpha/SKILL.md", SyncSourceAlpha);
+        temp.Write("template/.ai/skills/beta/SKILL.md", SyncSourceBeta);
+        temp.Write("workspace/.ai/catalog/presets.json", "{\"presets\":{}}");
+        temp.Write(
+            "workspace/.ai/ai.json",
+            """
+            {
+              "version": 1,
+              "sources": { "template": { "repo": "I-Synergy/AI", "ref": "v1", "path": "../template" } },
+              "skills": ["beta"],
+              "agents": [],
+              "materialize": "copy",
+              "exclude": []
+            }
+            """);
+        var paths = new WorkspacePaths(Path.Combine(temp.Root, "workspace"));
+        var queries = new WorkspaceQueries(paths, new GitSourceFetcher(paths, offline: true), offline: true);
+        var operations = new WorkspaceOperations(queries);
+
+        var outcome = operations.Sync();
+
+        Assert.AreEqual(0, outcome.Result.Code);
+        Assert.AreEqual(
+            "alpha",
+            string.Join(",", outcome.Report.Dependencies.Select(entry => ItemId.Display(entry.Id))));
+        Assert.AreEqual("beta", outcome.Report.Dependencies[0].RequiredBy);
+    }
+
+    [TestMethod]
+    [TestCategory("Unit")]
     public void Pin_MatchesThePythonManifest()
     {
         using var temp = new TempDirectory();
@@ -287,7 +521,7 @@ public sealed class WorkspaceOperationsTests
     [TestCategory("Unit")]
     public void Preset_AddAndRemove_EditsOnlyThePresetList()
     {
-        var (temp, paths, operations) = SyncScenario();
+        var (temp, _, operations) = SyncScenario();
         using var scope = temp;
 
         Assert.AreEqual(0, operations.Preset("add", ["Everything"]).Result.Code);

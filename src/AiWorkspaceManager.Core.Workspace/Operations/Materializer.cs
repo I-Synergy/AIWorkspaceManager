@@ -371,7 +371,10 @@ public static class Materializer
 
     private static int RunCmd(string arguments)
     {
-        var start = new ProcessStartInfo("cmd")
+        var command = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "cmd.exe");
+        var start = new ProcessStartInfo(command)
         {
             Arguments = arguments,
             RedirectStandardOutput = true,

@@ -246,6 +246,23 @@ export interface CliResult {
   stderr: string;
 }
 
+/** An item selected because something else requires it, and the item that requires it. */
+export interface RequiredItem {
+  id: string;
+  kind: string;
+  requiredBy: string;
+}
+
+/**
+ * What `install` did. `result` is the raw CLI outcome; `dependencies` is what the install pulled
+ * in on top of the requested item — empty when the item requires nothing, or when everything it
+ * requires was already selected.
+ */
+export interface InstallPayload {
+  result: CliResult;
+  dependencies: RequiredItem[];
+}
+
 export interface HostAPI {
   getBootstrap(params: Record<string, never>): Promise<Result<Bootstrap>>;
   getBrowse(params: { Refresh?: boolean }): Promise<Result<BrowsePayload>>;
@@ -267,7 +284,7 @@ export interface HostAPI {
   addPreset(params: { Name: string }): Promise<Result<CliResult>>;
   /** Freeze or thaw items so update/sync leave their content alone. */
   setLocked(params: { Ids: string[]; Locked: boolean }): Promise<Result<CliResult>>;
-  install(params: { Ids: string[] }): Promise<Result<CliResult>>;
+  install(params: { Ids: string[] }): Promise<Result<InstallPayload>>;
   remove(params: { Ids: string[]; Prune: boolean }): Promise<Result<CliResult>>;
   sync(params: Record<string, never>): Promise<Result<CliResult>>;
   updateItems(params: { Ids?: string[]; Force?: boolean }): Promise<Result<CliResult>>;

@@ -4,8 +4,8 @@ import * as nodePath from "node:path";
 import { CallAsync, isAvailable } from "./core-process";
 import { coreParams } from "./core-params";
 import type {
-  AdoptPayload, Bootstrap, BootstrapPayload, BrowsePayload, CliResult, HostAPI, LogSink, PresetsPayload,
-  ProjectInfo, ReleasePayload, Result, UpdatePayload, UpgradeResult, VendorSummary,
+  AdoptPayload, Bootstrap, BootstrapPayload, BrowsePayload, CliResult, HostAPI, InstallPayload, LogSink,
+  PresetsPayload, ProjectInfo, ReleasePayload, Result, UpdatePayload, UpgradeResult, VendorSummary,
 } from "../AiWorkspaceManager.VSCode.Common/types";
 import { fail, ok } from "../AiWorkspaceManager.VSCode.Common/types";
 
@@ -167,7 +167,7 @@ export function createHostAPI(context: HostApiContext): HostAPI {
     },
 
     async install(params) {
-      return guard(() => core<CliResult>("install", coreParams.install(params)));
+      return guard(() => core<InstallPayload>("installWithDependencies", coreParams.install(params)));
     },
 
     async remove(params) {

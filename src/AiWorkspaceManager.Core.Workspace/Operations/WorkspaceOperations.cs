@@ -38,39 +38,40 @@ public sealed class WorkspaceOperations
         }
 
         var added = new List<ItemRef>();
-        foreach (var (kind, itemId) in resolved)
+        var dependencies = new List<RequiredItem>();
+        var engine = queries.Engine(index);
+        foreach (var (kind, itemId, requiredBy) in engine.WithDependencies(resolved))
         {
-            var key = ResolverDefaults.ManifestKeys[kind];
-            var selection = manifest.EnsureArray(key);
-            var strings = selection.Select(ToStringOrNull).Where(value => value is not null).Select(value => value!).ToList();
-            var bare = ItemId.Display(itemId);
-            if (!strings.Contains(bare) && !strings.Contains(itemId))
+            if (!SelectItem(manifest, kind, itemId, requiredBy, added, dependencies))
             {
-                selection.Add(bare);
-                added.Add(new ItemRef(itemId, kind));
+                continue;
             }
 
-            var excludes = manifest.EnsureArray("exclude");
-            for (var position = excludes.Count - 1; position >= 0; position--)
-            {
-                if (ItemId.SoftCanonical(ToStringOrNull(excludes[position])) == itemId)
-                {
-                    excludes.RemoveAt(position);
-                }
-            }
+            RemoveFromExcludes(manifest, itemId);
         }
 
-        if (added.Count > 0 || existing is null)
+        if (added.Count > 0 || dependencies.Count > 0 || existing is null)
         {
             manifest.Save();
         }
 
-        var payload = new AddPayload(added, queries.Paths.ManifestPath);
+        var payload = new AddPayload(added, queries.Paths.ManifestPath, dependencies);
         var lines = new List<string>();
         if (added.Count > 0)
         {
             lines.Add($"added {added.Count} item(s) to {queries.Paths.ManifestPath}:");
             lines.AddRange(added.Select(entry => $"  + {entry.Kind,-6} {ItemId.Display(entry.Id)}"));
+        }
+
+        if (dependencies.Count > 0)
+        {
+            lines.Add($"added {dependencies.Count} dependency(ies) required by the selection:");
+            lines.AddRange(dependencies.Select(entry =>
+                $"  + {entry.Kind,-6} {ItemId.Display(entry.Id)} (required by {ItemId.Display(entry.RequiredBy)})"));
+        }
+
+        if (added.Count > 0 || dependencies.Count > 0)
+        {
             lines.Add("run 'catalog.py sync' to materialise them");
         }
         else
@@ -79,6 +80,53 @@ public sealed class WorkspaceOperations
         }
 
         return new OperationOutcome(new CliResult(0, JoinLines(lines), string.Empty), payload);
+    }
+
+    /// <summary>Adds one item to its manifest list unless it is already there.</summary>
+    private static bool SelectItem(
+        ManifestDocument manifest,
+        string kind,
+        string itemId,
+        string? requiredBy,
+        List<ItemRef> added,
+        List<RequiredItem> dependencies)
+    {
+        var selection = manifest.EnsureArray(ResolverDefaults.ManifestKeys[kind]);
+        var strings = selection
+            .Select(ToStringOrNull)
+            .Where(value => value is not null)
+            .Select(value => value!)
+            .ToList();
+        var bare = ItemId.Display(itemId);
+        if (strings.Contains(bare) || strings.Contains(itemId))
+        {
+            return false;
+        }
+
+        selection.Add(bare);
+        if (requiredBy is null)
+        {
+            added.Add(new ItemRef(itemId, kind));
+        }
+        else
+        {
+            dependencies.Add(new RequiredItem(itemId, kind, ItemId.Display(requiredBy)));
+        }
+
+        return true;
+    }
+
+    /// <summary>Drops a stale <c>exclude</c> entry for an item that is now selected.</summary>
+    private static void RemoveFromExcludes(ManifestDocument manifest, string itemId)
+    {
+        var excludes = manifest.EnsureArray(ResolverDefaults.ExcludeKey);
+        for (var position = excludes.Count - 1; position >= 0; position--)
+        {
+            if (ItemId.SoftCanonical(ToStringOrNull(excludes[position])) == itemId)
+            {
+                excludes.RemoveAt(position);
+            }
+        }
     }
 
     public OperationOutcome Remove(
@@ -91,165 +139,31 @@ public sealed class WorkspaceOperations
             ?? throw new ResolverException(
                 $"no manifest at {queries.Paths.ManifestPath} — nothing to remove");
 
-        var removed = new List<RemovedItem>();
-        foreach (var raw in ids)
-        {
-            var itemId = ItemId.Canonical(raw);
-            foreach (var kind in ResolverDefaults.Kinds)
-            {
-                if (!string.IsNullOrEmpty(kindFlag) && kind != kindFlag)
-                {
-                    continue;
-                }
-
-                var key = ResolverDefaults.ManifestKeys[kind];
-                var selection = manifest.GetStringArray(key).ToList();
-                var kept = selection.Where(value => ItemId.SoftCanonical(value) != itemId).ToList();
-                if (kept.Count != selection.Count)
-                {
-                    SetStringArray(manifest, key, kept);
-                    removed.Add(new RemovedItem(itemId, kind, "list"));
-                }
-            }
-        }
+        var removed = RemoveFromManifestLists(manifest, ids, kindFlag);
 
         var index = queries.BuildIndex(manifest);
         var indexByKey = index.ByKey();
         var engine = queries.Engine(index);
-        var declared = new HashSet<(string Kind, string Id)>();
-        foreach (var (kind, presetIds) in engine.PresetSelection(SelectionEngine.PresetNames(manifest), strict: false))
-        {
-            foreach (var itemId in presetIds)
-            {
-                declared.Add((kind, itemId));
-            }
-        }
 
-        var selected = engine.Selection(manifest, strict: false);
-        foreach (var raw in ids)
-        {
-            var itemId = ItemId.Canonical(raw);
-            var match = selected.FirstOrDefault(entry =>
-                entry.Id == itemId && declared.Contains((entry.Kind, entry.Id)));
-            if (match == default || (!string.IsNullOrEmpty(kindFlag) && match.Kind != kindFlag))
-            {
-                continue;
-            }
-
-            var excludes = manifest.EnsureArray("exclude");
-            var present = excludes
-                .Select(ToStringOrNull)
-                .Any(value => ItemId.SoftCanonical(value) == itemId);
-            if (!present)
-            {
-                excludes.Add(ItemId.Display(itemId));
-                if (!removed.Any(entry => entry.Id == itemId))
-                {
-                    removed.Add(new RemovedItem(itemId, match.Kind, "exclude"));
-                }
-            }
-        }
+        AddExcludesForPresetItems(manifest, ids, kindFlag, engine, removed);
 
         if (removed.Count == 0)
         {
-            var installed = engine.Closure(engine.Selection(manifest, strict: false))
-                .Select(entry => entry.Id)
-                .ToHashSet(StringComparer.Ordinal);
-            var requested = ids.Select(ItemId.Canonical).ToList();
-            var pulled = requested.Where(installed.Contains).ToList();
-            if (pulled.Count > 0 && !force)
-            {
-                var names = string.Join(", ", pulled.Select(id => $"'{ItemId.Display(id)}'"));
-                throw new ResolverException(
-                    $"{names} is not declared in ai.json — it is installed because something else "
-                    + "requires it. Remove the dependent instead.");
-            }
+            EnsureNotDependencyOnly(manifest, ids, engine, force);
         }
 
         if (removed.Count > 0 && !force)
         {
-            var remaining = engine.Closure(engine.Selection(manifest, strict: false));
-            var requiredBy = new Dictionary<(string Kind, string Id), List<string>>();
-            foreach (var (kind, itemId) in remaining)
-            {
-                if (!indexByKey.TryGetValue((kind, itemId), out var item))
-                {
-                    continue;
-                }
-
-                foreach (var dependency in item.Requires)
-                {
-                    var key = ("skill", dependency);
-                    if (!requiredBy.TryGetValue(key, out var who))
-                    {
-                        who = [];
-                        requiredBy[key] = who;
-                    }
-
-                    who.Add(itemId);
-                }
-            }
-
-            var blocked = new List<(RemovedItem Entry, List<string> Who)>();
-            foreach (var entry in removed)
-            {
-                var key = (entry.Kind, entry.Id);
-                var who = requiredBy.GetValueOrDefault(key) ?? [];
-                if (remaining.Contains(key) || who.Count > 0)
-                {
-                    blocked.Add((entry, who));
-                }
-            }
-
-            if (blocked.Count > 0)
-            {
-                var detail = string.Join(
-                    "; ",
-                    blocked.Select(pair =>
-                        $"{ItemId.Display(pair.Entry.Id)} ({pair.Entry.Kind}) is required by "
-                        + $"{string.Join(", ", pair.Who.OrderBy(name => name, StringComparer.Ordinal).Select(ItemId.Display).DefaultIfEmpty("another selected item"))}"));
-                var forced = blocked.Any(pair => pair.Entry.Via == "exclude")
-                    ? "the dependent will be installed without it"
-                    : "a later sync will restore it";
-                throw new ResolverException(
-                    $"refusing to orphan — {detail}. Remove the dependent first, "
-                    + $"--force to edit the manifest anyway ({forced})");
-            }
+            EnsureNothingIsOrphaned(manifest, removed, engine, indexByKey);
         }
 
         if (removed.Count > 0)
         {
-            var removedIds = removed.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-            var locks = manifest.GetStringArray("locked")
-                .Where(value => !removedIds.Contains(ItemId.SoftCanonical(value) ?? string.Empty))
-                .ToList();
-            SetStringArray(manifest, "locked", locks);
+            RemoveFromLockedList(manifest, removed);
             manifest.Save();
         }
 
-        var pruned = new List<PrunedItem>();
-        if (prune)
-        {
-            var lockDocument = queries.LoadLock();
-            var drop = removed.Select(entry => (entry.Kind, entry.Id)).ToHashSet();
-            var remaining = new List<LockEntry>();
-            foreach (var entry in lockDocument.Entries)
-            {
-                if (!drop.Contains((entry.Kind, entry.Id)))
-                {
-                    remaining.Add(entry);
-                    continue;
-                }
-
-                var (deleted, markers) = Materializer.PruneEntry(queries.Paths, entry);
-                pruned.Add(new PrunedItem(entry.Id, entry.Kind, entry.Path, deleted is not null, markers));
-            }
-
-            if (remaining.Count != lockDocument.Entries.Count)
-            {
-                LockDocument.Save(queries.Paths.LockPath, remaining);
-            }
-        }
+        var pruned = prune ? PruneRemoved(removed) : [];
 
         var payload = new RemovePayload(removed, pruned);
         if (removed.Count == 0)
@@ -281,6 +195,200 @@ public sealed class WorkspaceOperations
         return new OperationOutcome(new CliResult(0, JoinLines(output), string.Empty), payload);
     }
 
+    /// <summary>Drops the ids from every manifest list they appear in.</summary>
+    private static List<RemovedItem> RemoveFromManifestLists(
+        ManifestDocument manifest,
+        IReadOnlyList<string> ids,
+        string? kindFlag)
+    {
+        var removed = new List<RemovedItem>();
+        foreach (var raw in ids)
+        {
+            var itemId = ItemId.Canonical(raw);
+            foreach (var kind in ResolverDefaults.Kinds)
+            {
+                if (!string.IsNullOrEmpty(kindFlag) && kind != kindFlag)
+                {
+                    continue;
+                }
+
+                var key = ResolverDefaults.ManifestKeys[kind];
+                var selection = manifest.GetStringArray(key).ToList();
+                var kept = selection.Where(value => ItemId.SoftCanonical(value) != itemId).ToList();
+                if (kept.Count != selection.Count)
+                {
+                    SetStringArray(manifest, key, kept);
+                    removed.Add(new RemovedItem(itemId, kind, "list"));
+                }
+            }
+        }
+
+        return removed;
+    }
+
+    /// <summary>
+    /// Items a preset brings in are removed by listing them under <c>exclude</c>; a preset
+    /// cannot be edited per item.
+    /// </summary>
+    private static void AddExcludesForPresetItems(
+        ManifestDocument manifest,
+        IReadOnlyList<string> ids,
+        string? kindFlag,
+        SelectionEngine engine,
+        List<RemovedItem> removed)
+    {
+        var declared = new HashSet<(string Kind, string Id)>();
+        foreach (var (kind, presetIds) in engine.PresetSelection(SelectionEngine.PresetNames(manifest), strict: false))
+        {
+            foreach (var itemId in presetIds)
+            {
+                declared.Add((kind, itemId));
+            }
+        }
+
+        var selected = engine.Selection(manifest, strict: false);
+        foreach (var raw in ids)
+        {
+            var itemId = ItemId.Canonical(raw);
+            var match = selected.FirstOrDefault(entry =>
+                entry.Id == itemId && declared.Contains((entry.Kind, entry.Id)));
+            if (match == default || (!string.IsNullOrEmpty(kindFlag) && match.Kind != kindFlag))
+            {
+                continue;
+            }
+
+            var excludes = manifest.EnsureArray(ResolverDefaults.ExcludeKey);
+            var present = excludes
+                .Select(ToStringOrNull)
+                .Any(value => ItemId.SoftCanonical(value) == itemId);
+            if (present || removed.Any(entry => entry.Id == itemId))
+            {
+                continue;
+            }
+
+            excludes.Add(ItemId.Display(itemId));
+            removed.Add(new RemovedItem(itemId, match.Kind, ResolverDefaults.ExcludeKey));
+        }
+    }
+
+    /// <summary>Refuses to "remove" something that is only present because another item requires it.</summary>
+    private static void EnsureNotDependencyOnly(
+        ManifestDocument manifest,
+        IReadOnlyList<string> ids,
+        SelectionEngine engine,
+        bool force)
+    {
+        var installed = engine.Closure(engine.Selection(manifest, strict: false))
+            .Select(entry => entry.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var pulled = ids.Select(ItemId.Canonical).Where(installed.Contains).ToList();
+        if (pulled.Count == 0 || force)
+        {
+            return;
+        }
+
+        var names = string.Join(", ", pulled.Select(id => $"'{ItemId.Display(id)}'"));
+        throw new ResolverException(
+            $"{names} is not declared in ai.json — it is installed because something else "
+            + "requires it. Remove the dependent instead.");
+    }
+
+    /// <summary>Throws when a remaining item still requires one of the items being removed.</summary>
+    private static void EnsureNothingIsOrphaned(
+        ManifestDocument manifest,
+        List<RemovedItem> removed,
+        SelectionEngine engine,
+        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> indexByKey)
+    {
+        var remaining = engine.Closure(engine.Selection(manifest, strict: false));
+        var requiredBy = RequiredByIndex(remaining, indexByKey);
+        var blocked = removed
+            .Select(entry => (Entry: entry, Who: requiredBy.GetValueOrDefault((entry.Kind, entry.Id)) ?? []))
+            .Where(pair => remaining.Contains((pair.Entry.Kind, pair.Entry.Id)) || pair.Who.Count > 0)
+            .ToList();
+        if (blocked.Count == 0)
+        {
+            return;
+        }
+
+        var detail = string.Join(
+            "; ",
+            blocked.Select(pair =>
+                $"{ItemId.Display(pair.Entry.Id)} ({pair.Entry.Kind}) is required by "
+                + $"{string.Join(", ", pair.Who.OrderBy(name => name, StringComparer.Ordinal).Select(ItemId.Display).DefaultIfEmpty("another selected item"))}"));
+        var forced = blocked.Any(pair => pair.Entry.Via == ResolverDefaults.ExcludeKey)
+            ? "the dependent will be installed without it"
+            : "a later sync will restore it";
+        throw new ResolverException(
+            $"refusing to orphan — {detail}. Remove the dependent first, "
+            + $"--force to edit the manifest anyway ({forced})");
+    }
+
+    /// <summary>Maps each required skill to the ids that declare it.</summary>
+    private static Dictionary<(string Kind, string Id), List<string>> RequiredByIndex(
+        IEnumerable<(string Kind, string Id)> selection,
+        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> indexByKey)
+    {
+        var requiredBy = new Dictionary<(string Kind, string Id), List<string>>();
+        foreach (var (kind, itemId) in selection)
+        {
+            if (!indexByKey.TryGetValue((kind, itemId), out var item))
+            {
+                continue;
+            }
+
+            foreach (var dependency in item.Requires)
+            {
+                var key = (ResolverDefaults.SkillKind, dependency);
+                if (!requiredBy.TryGetValue(key, out var who))
+                {
+                    who = [];
+                    requiredBy[key] = who;
+                }
+
+                who.Add(itemId);
+            }
+        }
+
+        return requiredBy;
+    }
+
+    private static void RemoveFromLockedList(ManifestDocument manifest, List<RemovedItem> removed)
+    {
+        var removedIds = removed.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+        var locks = manifest.GetStringArray("locked")
+            .Where(value => !removedIds.Contains(ItemId.SoftCanonical(value) ?? string.Empty))
+            .ToList();
+        SetStringArray(manifest, "locked", locks);
+    }
+
+    /// <summary>Deletes the lock-recorded files for the removed items.</summary>
+    private List<PrunedItem> PruneRemoved(List<RemovedItem> removed)
+    {
+        var lockDocument = queries.LoadLock();
+        var drop = removed.Select(entry => (entry.Kind, entry.Id)).ToHashSet();
+        var pruned = new List<PrunedItem>();
+        var remaining = new List<LockEntry>();
+        foreach (var entry in lockDocument.Entries)
+        {
+            if (!drop.Contains((entry.Kind, entry.Id)))
+            {
+                remaining.Add(entry);
+                continue;
+            }
+
+            var (deleted, markers) = Materializer.PruneEntry(queries.Paths, entry);
+            pruned.Add(new PrunedItem(entry.Id, entry.Kind, entry.Path, deleted is not null, markers));
+        }
+
+        if (remaining.Count != lockDocument.Entries.Count)
+        {
+            LockDocument.Save(queries.Paths.LockPath, remaining);
+        }
+
+        return pruned;
+    }
+
     public OperationOutcome SetLocked(IReadOnlyList<string> ids, bool locked)
     {
         var manifest = queries.LoadManifest()
@@ -301,30 +409,11 @@ public sealed class WorkspaceOperations
             var itemId = ItemId.Canonical(raw);
             if (locked)
             {
-                if (!selected.Contains(itemId))
-                {
-                    throw new ResolverException(
-                        $"'{ItemId.Display(itemId)}' is not selected — lock an item this project installs");
-                }
-
-                if (current.Contains(itemId))
-                {
-                    continue;
-                }
-
-                entries.Add(ItemId.Display(itemId));
-                current.Add(itemId);
-                changed.Add(itemId);
+                AddLock(selected, entries, current, changed, itemId);
             }
             else
             {
-                var kept = entries.Where(value => ItemId.SoftCanonical(value) != itemId).ToList();
-                if (kept.Count != entries.Count)
-                {
-                    entries = kept;
-                    current.Remove(itemId);
-                    changed.Add(itemId);
-                }
+                entries = RemoveLock(entries, current, changed, itemId);
             }
         }
 
@@ -354,114 +443,102 @@ public sealed class WorkspaceOperations
         return new OperationOutcome(new CliResult(0, JoinLines(lines), string.Empty), payload);
     }
 
-    public SyncOutcome Sync(
-        bool check = false,
-        bool frozen = false,
-        bool prune = false,
-        bool dryRun = false,
-        string? materializeOverride = null)
+    private static void AddLock(
+        HashSet<string> selected,
+        List<string> entries,
+        HashSet<string> current,
+        List<string> changed,
+        string itemId)
     {
-        var existing = queries.LoadManifest();
-        var fresh = existing is null;
-        var manifest = existing ?? queries.StarterManifest();
-        var mode = WorkspaceQueries.MaterializeMode(manifest, materializeOverride);
-        var templateRoot = queries.Sources.TemplateRoot(manifest);
-        var sameDirectory = WorkspacePaths.SamePath(templateRoot, queries.Paths.Root);
-        var index = queries.BuildIndex(manifest);
-        var indexByKey = index.ByKey();
-        var engine = queries.Engine(index);
-        // A repository can carry skills that were added by hand: they are not part of any
-        // declared source, but they are already on disk and are intentionally in the manifest.
-        // Keep them out of the resolver instead of failing the whole sync when another item is
-        // installed; only an id with no local files is treated as a typo.
-        var selected = engine.EffectiveSelection(manifest, strict: false);
-        foreach (var (kind, itemId) in selected)
+        if (!selected.Contains(itemId))
         {
-            if (indexByKey.ContainsKey((kind, itemId)))
-            {
-                continue;
-            }
-
-            var target = queries.Paths.TargetPath(kind, ItemId.Split(itemId).Name);
-            if (!PathOps.ExistsOrLink(target))
-            {
-                throw new ResolverException(
-                    $"unknown id '{ItemId.Display(itemId)}' — not in the catalog "
-                    + "(run 'catalog.py index' if the tree changed)");
-            }
+            throw new ResolverException(
+                $"'{ItemId.Display(itemId)}' is not selected — lock an item this project installs");
         }
 
-        engine.CheckHookGate(manifest, selected, queries.Sources, queries.Paths);
-
-        var lockDocument = queries.LoadLock();
-        var locked = lockDocument.ByKey();
-        var frozenIds = engine.LockedIds(manifest);
-        var reference = SourceCatalog.SourceRef(manifest);
-
-        var actions = new List<SyncAction>();
-        var conflicts = new List<string>();
-        var entries = new List<LockEntry>();
-        var targets = new List<string>();
-
-        foreach (var (kind, itemId) in selected)
+        if (current.Add(itemId))
         {
-            if (!indexByKey.TryGetValue((kind, itemId), out var item))
-            {
-                continue;
-            }
+            entries.Add(ItemId.Display(itemId));
+            changed.Add(itemId);
+        }
+    }
 
-            var target = queries.Paths.TargetPath(kind, item.Name);
-            targets.Add(target);
-            var itemSource = item.Source;
-            var itemRoot = queries.Sources.SourceRoot(itemSource, SourceCatalog.EntryNamed(manifest, itemSource));
-            var source = Path.Combine(itemRoot, item.SourcePath ?? item.Path);
-            var entry = LockEntry.Make(kind, item, mode);
-            var previous = locked.GetValueOrDefault((kind, itemId));
-
-            if (WorkspacePaths.SamePath(itemRoot, queries.Paths.Root))
-            {
-                entries.Add(entry);
-                actions.Add(Action("no-op", kind, itemId, item.Path, "source == target"));
-                continue;
-            }
-
-            var exists = PathOps.ExistsOrLink(target);
-            if (!exists)
-            {
-                entries.Add(entry);
-                actions.Add(Action("create", kind, itemId, item.Path));
-            }
-            else if (previous is null)
-            {
-                actions.Add(Action("conflict", kind, itemId, item.Path, "untracked path exists"));
-                conflicts.Add($"{item.Path} exists but is not recorded in the lock");
-            }
-            else if (frozenIds.Contains(itemId))
-            {
-                entries.Add(previous);
-                actions.Add(Action("ok", kind, itemId, item.Path, "locked"));
-            }
-            else if (WorkspacePaths.SamePath(source, target))
-            {
-                entries.Add(entry);
-                actions.Add(Action("ok", kind, itemId, item.Path));
-            }
-            else
-            {
-                entries.Add(entry);
-                var current = ContentHash.InstalledHash(item, target);
-                var needs = !string.Equals(current, entry.Sha256, StringComparison.Ordinal)
-                    || !string.Equals(previous.Path, entry.Path, StringComparison.Ordinal)
-                    || !string.Equals(previous.Materialize ?? "link", mode, StringComparison.Ordinal);
-                actions.Add(Action(needs ? "update" : "ok", kind, itemId, item.Path));
-            }
+    private static List<string> RemoveLock(
+        List<string> entries,
+        HashSet<string> current,
+        List<string> changed,
+        string itemId)
+    {
+        var kept = entries.Where(value => ItemId.SoftCanonical(value) != itemId).ToList();
+        if (kept.Count == entries.Count)
+        {
+            return entries;
         }
 
-        var markerFiles = sameDirectory ? [] : Materializer.LegacyMarkers(queries.Paths, targets);
-        var oldIndex = sameDirectory ? null : Materializer.LegacyIndex(queries.Paths);
+        current.Remove(itemId);
+        changed.Add(itemId);
+        return kept;
+    }
 
-        var selectedKeys = selected.ToHashSet();
-        var knownKinds = ResolverDefaults.Kinds.ToHashSet(StringComparer.Ordinal);
+    /// <summary>
+    /// Decides what sync does with one selected item: create, update, leave alone or conflict.
+    /// Returns the planned action, the conflict message (if any) and the lock entry to record.
+    /// </summary>
+    private static (SyncAction Action, string? Conflict, LockEntry? Entry) PlanAction(
+        CatalogItem item,
+        LockEntry entry,
+        LockEntry? previous,
+        ActionContext context)
+    {
+        var kind = item.Kind;
+        var itemId = item.Id;
+        if (context.SameDirectory)
+        {
+            return (Action(ResolverDefaults.ActionNoOp, kind, itemId, item.Path, "source == target"), null, entry);
+        }
+
+        if (!PathOps.ExistsOrLink(context.Target))
+        {
+            return (Action(ResolverDefaults.ActionCreate, kind, itemId, item.Path), null, entry);
+        }
+
+        if (previous is null)
+        {
+            return (
+                Action(ResolverDefaults.ActionConflict, kind, itemId, item.Path, "untracked path exists"),
+                $"{item.Path} exists but is not recorded in the lock",
+                null);
+        }
+
+        if (context.Frozen)
+        {
+            return (Action(ResolverDefaults.ActionOk, kind, itemId, item.Path, "locked"), null, previous);
+        }
+
+        if (WorkspacePaths.SamePath(context.Source, context.Target))
+        {
+            return (Action(ResolverDefaults.ActionOk, kind, itemId, item.Path), null, entry);
+        }
+
+        var current = ContentHash.InstalledHash(item, context.Target);
+        var needs = !string.Equals(current, entry.Sha256, StringComparison.Ordinal)
+            || !string.Equals(previous.Path, entry.Path, StringComparison.Ordinal)
+            || !string.Equals(previous.Materialize ?? "link", context.Mode, StringComparison.Ordinal);
+        return (
+            Action(needs ? ResolverDefaults.ActionUpdate : ResolverDefaults.ActionOk, kind, itemId, item.Path),
+            null,
+            entry);
+    }
+
+    /// <summary>The per-item inputs <see cref="PlanAction"/> needs that do not change between items.</summary>
+    private sealed record ActionContext(string Source, string Target, bool Frozen, bool SameDirectory, string Mode);
+
+    /// <summary>Splits lock entries that are no longer selected into prunable and unknown kinds.</summary>
+    private static (List<LockEntry> PendingPrune, List<LockEntry> PreservedUnknown) PartitionLocked(
+        IReadOnlyDictionary<(string Kind, string Id), LockEntry> locked,
+        HashSet<(string Kind, string Id)> selectedKeys,
+        HashSet<string> knownKinds)
+    {
         var pendingPrune = new List<LockEntry>();
         var preservedUnknown = new List<LockEntry>();
         foreach (var (_, entry) in locked)
@@ -481,12 +558,159 @@ public sealed class WorkspaceOperations
             }
         }
 
+        return (pendingPrune, preservedUnknown);
+    }
+
+    public SyncOutcome Sync(
+        bool check = false,
+        bool frozen = false,
+        bool prune = false,
+        bool dryRun = false,
+        string? materializeOverride = null)
+    {
+        var plan = PlanSync(prune, materializeOverride);
+
+        if (check)
+        {
+            return CheckOutcome(plan);
+        }
+
+        if (frozen && plan.LockChanged)
+        {
+            return FrozenOutcome(plan);
+        }
+
+        var performed = new List<SyncPerformed>();
+        var markersRemoved = 0;
+        var legacyIndexRemoved = false;
+        MirrorReport? mirror = null;
+        AgentConfigPayload? agentConfig = null;
+        if (!dryRun)
+        {
+            (markersRemoved, legacyIndexRemoved) = RemoveLegacyArtifacts(plan.MarkerFiles, plan.OldIndex);
+            MaterializeChanged(plan.Manifest, plan.IndexByKey, plan.Actions, plan.Mode, performed, plan.Conflicts);
+            if (prune)
+            {
+                PruneEntries(plan.PendingPrune, performed);
+            }
+
+            if (plan.LockChanged)
+            {
+                LockDocument.Save(queries.Paths.LockPath, plan.Entries);
+            }
+
+            _ = setup.InstallTooling(plan.TemplateRoot, overwrite: false, plan.Reference);
+            agentConfig = AgentConfigPayload.From(setup.InstallAgentConfig(plan.Manifest.Root));
+            if (plan.Fresh)
+            {
+                _ = setup.InstallScaffold(plan.TemplateRoot);
+            }
+
+            _ = setup.EnsureGitignore();
+            mirror = new PlatformMirrorService(queries.Paths).Sync(plan.Manifest);
+            _ = new InstructionDocumentService(queries).Update(plan.Manifest.Root);
+        }
+
+        if (mirror is not null)
+        {
+            plan.Conflicts.AddRange(mirror.Conflicts.Select(target =>
+                $"{target} holds content the sync will not overwrite; resolve it by hand, then sync again"));
+        }
+
+        var applied = new SyncReport(
+            dryRun ? "dry-run" : "apply",
+            false,
+            plan.SameDirectory,
+            plan.Actions,
+            plan.PendingPrune.Select(entry => entry.Path).ToList(),
+            plan.PreservedUnknown.Select(entry => entry.Id).ToList(),
+            plan.MarkerFiles.Select(Relative).ToList(),
+            plan.OldIndex is null ? null : Relative(plan.OldIndex),
+            plan.LockChanged,
+            performed,
+            markersRemoved,
+            legacyIndexRemoved,
+            prune,
+            plan.Conflicts,
+            plan.Dependencies);
+
+        return new SyncOutcome(
+            new CliResult(
+                plan.Conflicts.Count > 0 ? 1 : 0,
+                JoinLines(DescribeOutcome(plan, agentConfig, mirror, prune, dryRun)),
+                JoinLines(plan.Conflicts.Select(conflict => $"CONFLICT: {conflict}"))),
+            applied);
+    }
+
+    /// <summary>Everything sync decides before it writes anything.</summary>
+    private sealed record SyncPlan(
+        bool Fresh,
+        ManifestDocument Manifest,
+        string Mode,
+        string TemplateRoot,
+        bool SameDirectory,
+        string Reference,
+        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> IndexByKey,
+        List<SyncAction> Actions,
+        List<string> Conflicts,
+        List<LockEntry> Entries,
+        List<string> MarkerFiles,
+        string? OldIndex,
+        List<LockEntry> PendingPrune,
+        List<LockEntry> PreservedUnknown,
+        bool LockChanged,
+        bool Drift,
+        List<RequiredItem> Dependencies);
+
+    /// <summary>Reads the manifest and catalog and works out what sync would do, without writing.</summary>
+    private SyncPlan PlanSync(bool prune, string? materializeOverride)
+    {
+        var existing = queries.LoadManifest();
+        var manifest = existing ?? queries.StarterManifest();
+        var mode = WorkspaceQueries.MaterializeMode(manifest, materializeOverride);
+        var templateRoot = queries.Sources.TemplateRoot(manifest);
+        var sameDirectory = WorkspacePaths.SamePath(templateRoot, queries.Paths.Root);
+        var index = queries.BuildIndex(manifest);
+        var indexByKey = index.ByKey();
+        var engine = queries.Engine(index);
+        // A repository can carry skills that were added by hand: they are not part of any
+        // declared source, but they are already on disk and are intentionally in the manifest.
+        // Keep them out of the resolver instead of failing the whole sync when another item is
+        // installed; only an id with no local files is treated as a typo.
+        var selected = engine.EffectiveSelection(manifest, strict: false);
+        var dependencies = engine
+            .WithDependencies(engine.Selection(manifest, strict: false))
+            .Where(entry => entry.RequiredBy is not null)
+            .Select(entry => new RequiredItem(entry.Id, entry.Kind, ItemId.Display(entry.RequiredBy!)))
+            .ToList();
+        EnsureSelectedItemsExist(indexByKey, selected);
+        engine.CheckHookGate(manifest, selected, queries.Sources, queries.Paths);
+
+        var lockDocument = queries.LoadLock();
+        var locked = lockDocument.ByKey();
+        var frozenIds = engine.LockedIds(manifest);
+
+        var collector = new SyncCollector();
+        PlanSyncActions(
+            manifest,
+            indexByKey,
+            selected,
+            new SyncOptions(locked, frozenIds, mode, sameDirectory),
+            collector);
+
+        var markerFiles = sameDirectory ? [] : Materializer.LegacyMarkers(queries.Paths, collector.Targets);
+        var oldIndex = sameDirectory ? null : Materializer.LegacyIndex(queries.Paths);
+
+        var selectedKeys = selected.ToHashSet();
+        var knownKinds = ResolverDefaults.Kinds.ToHashSet(StringComparer.Ordinal);
+        var (pendingPrune, preservedUnknown) = PartitionLocked(locked, selectedKeys, knownKinds);
         pendingPrune.Sort((left, right) =>
         {
             var compared = string.CompareOrdinal(left.Kind, right.Kind);
             return compared != 0 ? compared : string.CompareOrdinal(left.Id, right.Id);
         });
 
+        var entries = collector.Entries;
         if (!prune)
         {
             entries.AddRange(pendingPrune);
@@ -497,198 +721,268 @@ public sealed class WorkspaceOperations
         var newLock = LockDocument.FromEntries(entries);
         var lockChanged = !sameDirectory
             && !string.Equals(LockDocument.Signature(newLock), LockDocument.Signature(lockDocument), StringComparison.Ordinal);
-        var changes = actions.Where(action => action.Action is "create" or "update" or "conflict").ToList();
+        var changes = collector.Actions.Where(action => action.Action is ResolverDefaults.ActionCreate or ResolverDefaults.ActionUpdate or ResolverDefaults.ActionConflict).ToList();
         var drift = changes.Count > 0
             || pendingPrune.Count > 0
             || lockChanged
             || markerFiles.Count > 0
             || oldIndex is not null;
 
-        if (check)
-        {
-            var report = new SyncReport(
-                "check",
-                !drift,
-                sameDirectory,
-                actions,
-                pendingPrune.Select(entry => entry.Path).ToList(),
-                preservedUnknown.Select(entry => entry.Id).ToList(),
-                markerFiles.Select(path => Relative(path)).ToList(),
-                oldIndex is null ? null : Relative(oldIndex),
-                lockChanged,
-                [],
-                0,
-                false,
-                false,
-                conflicts);
-            var lines = new List<string>();
-            if (sameDirectory)
-            {
-                lines.Add("no-op: source == target");
-            }
-
-            lines.AddRange(Describe(actions, pendingPrune));
-            if (drift)
-            {
-                lines.Add("drift detected");
-            }
-            else
-            {
-                lines.Add("in sync");
-            }
-
-            return new SyncOutcome(new CliResult(drift ? 1 : 0, JoinLines(lines), string.Empty), report);
-        }
-
-        if (frozen && lockChanged)
-        {
-            var report = new SyncReport(
-                "frozen",
-                false,
-                sameDirectory,
-                actions,
-                pendingPrune.Select(entry => entry.Path).ToList(),
-                preservedUnknown.Select(entry => entry.Id).ToList(),
-                [],
-                null,
-                true,
-                [],
-                0,
-                false,
-                false,
-                conflicts);
-            return new SyncOutcome(
-                new CliResult(1, JoinLines(Describe(actions, pendingPrune).Append($"frozen lock would need to change: {queries.Paths.LockPath}")), string.Empty),
-                report);
-        }
-
-        var performed = new List<SyncPerformed>();
-        var markersRemoved = 0;
-        var legacyIndexRemoved = false;
-        MirrorReport? mirror = null;
-        AgentConfigPayload? agentConfig = null;
-        if (!dryRun)
-        {
-            foreach (var marker in markerFiles)
-            {
-                try
-                {
-                    File.Delete(marker);
-                    markersRemoved++;
-                }
-                catch (IOException)
-                {
-                    // already gone with a directory replaced by materialize
-                }
-            }
-
-            if (oldIndex is not null)
-            {
-                try
-                {
-                    File.Delete(oldIndex);
-                    legacyIndexRemoved = true;
-                }
-                catch (IOException)
-                {
-                    // best effort
-                }
-            }
-
-            if (markerFiles.Count > 0
-                && Directory.Exists(queries.Paths.InstalledDirectory)
-                && !Directory.EnumerateFileSystemEntries(queries.Paths.InstalledDirectory).Any())
-            {
-                Directory.Delete(queries.Paths.InstalledDirectory);
-            }
-
-            foreach (var action in actions.Where(action => action.Action is "create" or "update"))
-            {
-                if (!indexByKey.TryGetValue((action.Kind, action.Id), out var item))
-                {
-                    continue;
-                }
-
-                var target = queries.Paths.TargetPath(action.Kind, item.Name);
-                var itemRoot = queries.Sources.SourceRoot(
-                    item.Source,
-                    SourceCatalog.EntryNamed(manifest, item.Source));
-                var source = Path.Combine(itemRoot, item.SourcePath ?? item.Path);
-                var ok = Materializer.MaterializeItem(item, source, target, mode);
-                performed.Add(new SyncPerformed(action.Action, action.Kind, action.Id, action.Path, ok));
-                if (!ok)
-                {
-                    conflicts.Add($"could not materialize {action.Path}");
-                }
-            }
-
-            if (prune)
-            {
-                foreach (var entry in pendingPrune)
-                {
-                    var (deleted, markers) = Materializer.PruneEntry(queries.Paths, entry);
-                    performed.Add(new SyncPerformed(
-                        "delete",
-                        entry.Kind,
-                        entry.Id,
-                        entry.Path,
-                        true,
-                        deleted is not null,
-                        markers));
-                }
-            }
-
-            if (lockChanged)
-            {
-                LockDocument.Save(queries.Paths.LockPath, entries);
-            }
-
-            _ = setup.InstallTooling(templateRoot, overwrite: false, reference);
-            agentConfig = AgentConfigPayload.From(setup.InstallAgentConfig(manifest.Root));
-            if (fresh)
-            {
-                _ = setup.InstallScaffold(templateRoot);
-            }
-
-            _ = setup.EnsureGitignore();
-            mirror = new PlatformMirrorService(queries.Paths).Sync(manifest);
-        }
-
-        if (!dryRun)
-        {
-            _ = new InstructionDocumentService(queries).Update(manifest.Root);
-        }
-
-        if (mirror is not null)
-        {
-            conflicts.AddRange(mirror.Conflicts.Select(target =>
-                $"{target} holds content the sync will not overwrite; resolve it by hand, then sync again"));
-        }
-
-        var applied = new SyncReport(
-            dryRun ? "dry-run" : "apply",
-            false,
+        return new SyncPlan(
+            existing is null,
+            manifest,
+            mode,
+            templateRoot,
             sameDirectory,
-            actions,
-            pendingPrune.Select(entry => entry.Path).ToList(),
-            preservedUnknown.Select(entry => entry.Id).ToList(),
-            markerFiles.Select(Relative).ToList(),
-            oldIndex is null ? null : Relative(oldIndex),
+            SourceCatalog.SourceRef(manifest),
+            indexByKey,
+            collector.Actions,
+            collector.Conflicts,
+            entries,
+            markerFiles,
+            oldIndex,
+            pendingPrune,
+            preservedUnknown,
             lockChanged,
-            performed,
-            markersRemoved,
-            legacyIndexRemoved,
-            prune,
-            conflicts);
+            drift,
+            dependencies);
+    }
 
+    /// <summary>Fails with the missing path when a selected id is neither in the catalog nor on disk.</summary>
+    private void EnsureSelectedItemsExist(
+        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> indexByKey,
+        IEnumerable<(string Kind, string Id)> selected)
+    {
+        foreach (var (kind, itemId) in selected)
+        {
+            if (indexByKey.ContainsKey((kind, itemId)))
+            {
+                continue;
+            }
+
+            var target = queries.Paths.TargetPath(kind, ItemId.Split(itemId).Name);
+            if (!PathOps.ExistsOrLink(target))
+            {
+                throw new ResolverException(
+                    $"unknown id '{ItemId.Display(itemId)}' — not in the catalog "
+                    + "(run 'catalog.py index' if the tree changed)");
+            }
+        }
+    }
+
+    /// <summary>Fills the planned actions, conflicts, lock entries and installed targets for one sync.</summary>
+    private void PlanSyncActions(
+        ManifestDocument manifest,
+        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> indexByKey,
+        IEnumerable<(string Kind, string Id)> selected,
+        SyncOptions options,
+        SyncCollector collector)
+    {
+        foreach (var (kind, itemId) in selected)
+        {
+            if (!indexByKey.TryGetValue((kind, itemId), out var item))
+            {
+                continue;
+            }
+
+            var target = queries.Paths.TargetPath(kind, item.Name);
+            collector.Targets.Add(target);
+            var itemRoot = queries.Sources.SourceRoot(item.Source, SourceCatalog.EntryNamed(manifest, item.Source));
+            var source = Path.Combine(itemRoot, item.SourcePath ?? item.Path);
+            var entry = LockEntry.Make(kind, item, options.Mode);
+            var previous = options.Locked.GetValueOrDefault((kind, itemId));
+
+            var context = new ActionContext(
+                source,
+                target,
+                options.FrozenIds.Contains(itemId),
+                options.SameDirectory,
+                options.Mode);
+            var (action, conflict, lockEntry) = PlanAction(item, entry, previous, context);
+            collector.Actions.Add(action);
+            if (conflict is not null)
+            {
+                collector.Conflicts.Add(conflict);
+            }
+
+            if (lockEntry is not null)
+            {
+                collector.Entries.Add(lockEntry);
+            }
+        }
+    }
+
+    /// <summary>The settings every item in one sync is planned against.</summary>
+    private sealed record SyncOptions(
+        IReadOnlyDictionary<(string Kind, string Id), LockEntry> Locked,
+        HashSet<string> FrozenIds,
+        string Mode,
+        bool SameDirectory);
+
+    /// <summary>The lists one sync plan accumulates while it walks the selection.</summary>
+    private sealed class SyncCollector
+    {
+        public List<SyncAction> Actions { get; } = [];
+
+        public List<string> Conflicts { get; } = [];
+
+        public List<LockEntry> Entries { get; } = [];
+
+        public List<string> Targets { get; } = [];
+    }
+
+    /// <summary>Deletes the pre-materialize marker files and legacy index; returns how many went.</summary>
+    private (int MarkersRemoved, bool LegacyIndexRemoved) RemoveLegacyArtifacts(
+        List<string> markerFiles,
+        string? oldIndex)
+    {
+        var removed = 0;
+        foreach (var marker in markerFiles)
+        {
+            try
+            {
+                File.Delete(marker);
+                removed++;
+            }
+            catch (IOException)
+            {
+                // already gone with a directory replaced by materialize
+            }
+        }
+
+        var legacyIndexRemoved = false;
+        if (oldIndex is not null)
+        {
+            try
+            {
+                File.Delete(oldIndex);
+                legacyIndexRemoved = true;
+            }
+            catch (IOException)
+            {
+                // best effort
+            }
+        }
+
+        if (markerFiles.Count > 0
+            && Directory.Exists(queries.Paths.InstalledDirectory)
+            && !Directory.EnumerateFileSystemEntries(queries.Paths.InstalledDirectory).Any())
+        {
+            Directory.Delete(queries.Paths.InstalledDirectory);
+        }
+
+        return (removed, legacyIndexRemoved);
+    }
+
+    /// <summary>Writes every item sync decided to create or update, recording what happened.</summary>
+    private void MaterializeChanged(
+        ManifestDocument manifest,
+        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> indexByKey,
+        List<SyncAction> actions,
+        string mode,
+        List<SyncPerformed> performed,
+        List<string> conflicts)
+    {
+        foreach (var action in actions.Where(action => action.Action is ResolverDefaults.ActionCreate or ResolverDefaults.ActionUpdate))
+        {
+            if (!indexByKey.TryGetValue((action.Kind, action.Id), out var item))
+            {
+                continue;
+            }
+
+            var target = queries.Paths.TargetPath(action.Kind, item.Name);
+            var itemRoot = queries.Sources.SourceRoot(
+                item.Source,
+                SourceCatalog.EntryNamed(manifest, item.Source));
+            var source = Path.Combine(itemRoot, item.SourcePath ?? item.Path);
+            var ok = Materializer.MaterializeItem(item, source, target, mode);
+            performed.Add(new SyncPerformed(action.Action, action.Kind, action.Id, action.Path, ok));
+            if (!ok)
+            {
+                conflicts.Add($"could not materialize {action.Path}");
+            }
+        }
+    }
+
+    private void PruneEntries(IEnumerable<LockEntry> pendingPrune, List<SyncPerformed> performed)
+    {
+        foreach (var entry in pendingPrune)
+        {
+            var (deleted, markers) = Materializer.PruneEntry(queries.Paths, entry);
+            performed.Add(new SyncPerformed(
+                "delete",
+                entry.Kind,
+                entry.Id,
+                entry.Path,
+                true,
+                deleted is not null,
+                markers));
+        }
+    }
+
+    private SyncOutcome CheckOutcome(SyncPlan plan)
+    {
+        var report = new SyncReport(
+            "check",
+            !plan.Drift,
+            plan.SameDirectory,
+            plan.Actions,
+            plan.PendingPrune.Select(entry => entry.Path).ToList(),
+            plan.PreservedUnknown.Select(entry => entry.Id).ToList(),
+            plan.MarkerFiles.Select(Relative).ToList(),
+            plan.OldIndex is null ? null : Relative(plan.OldIndex),
+            plan.LockChanged,
+            [],
+            0,
+            false,
+            false,
+            plan.Conflicts,
+            plan.Dependencies);
+
+        var lines = new List<string>();
+        if (plan.SameDirectory)
+        {
+            lines.Add("no-op: source == target");
+        }
+
+        lines.AddRange(Describe(plan.Actions, plan.PendingPrune));
+        lines.Add(plan.Drift ? "drift detected" : "in sync");
+        return new SyncOutcome(new CliResult(plan.Drift ? 1 : 0, JoinLines(lines), string.Empty), report);
+    }
+
+    private SyncOutcome FrozenOutcome(SyncPlan plan)
+    {
+        var report = new SyncReport(
+            "frozen",
+            false,
+            plan.SameDirectory,
+            plan.Actions,
+            plan.PendingPrune.Select(entry => entry.Path).ToList(),
+            plan.PreservedUnknown.Select(entry => entry.Id).ToList(),
+            [],
+            null,
+            true,
+            [],
+            0,
+            false,
+            false,
+            plan.Conflicts,
+            plan.Dependencies);
+        var lines = Describe(plan.Actions, plan.PendingPrune)
+            .Append($"frozen lock would need to change: {queries.Paths.LockPath}");
+        return new SyncOutcome(new CliResult(1, JoinLines(lines), string.Empty), report);
+    }
+
+    private static List<string> DescribeOutcome(
+        SyncPlan plan,
+        AgentConfigPayload? agentConfig,
+        MirrorReport? mirror,
+        bool prune,
+        bool dryRun)
+    {
         var output = new List<string>();
         var prefix = dryRun ? "[DRY RUN] " : string.Empty;
-        if (sameDirectory)
-        {
-            output.Add("no-op: source == target");
-        }
-
-        output.AddRange(Describe(actions, pendingPrune));
+        output.AddRange(Describe(plan.Actions, plan.PendingPrune));
         if (agentConfig is not null)
         {
             output.AddRange(agentConfig.Lines());
@@ -698,25 +992,22 @@ public sealed class WorkspaceOperations
         {
             output.AddRange(mirror.Lines);
         }
-        if (pendingPrune.Count > 0 && !prune)
+
+        if (plan.PendingPrune.Count > 0 && !prune)
         {
-            output.Add($"{prefix}{pendingPrune.Count} item(s) pending prune (run 'catalog.py sync --prune')");
+            output.Add($"{prefix}{plan.PendingPrune.Count} item(s) pending prune (run 'catalog.py sync --prune')");
         }
 
-        var touched = actions.Count(action => action.Action is "create" or "update");
+        var touched = plan.Actions.Count(action => action.Action is ResolverDefaults.ActionCreate or ResolverDefaults.ActionUpdate);
         if (dryRun)
         {
             output.Add($"{prefix}{touched} item(s) would change; nothing written");
-        }
-        else
-        {
-            output.Add($"{prefix}{touched} item(s) changed; {(lockChanged ? "lock updated" : "lock unchanged")}");
+            return output;
         }
 
-        var errors = conflicts.Select(conflict => $"CONFLICT: {conflict}").ToList();
-        return new SyncOutcome(
-            new CliResult(conflicts.Count > 0 ? 1 : 0, JoinLines(output), JoinLines(errors)),
-            applied);
+        var lockState = plan.LockChanged ? "lock updated" : "lock unchanged";
+        output.Add($"{prefix}{touched} item(s) changed; {lockState}");
+        return output;
     }
 
     public OperationOutcome ApplyUpdates(
@@ -866,7 +1157,7 @@ public sealed class WorkspaceOperations
         var payload = new PinPayload(
             ResolverDefaults.TemplateSource,
             entry["repo"]!.GetValue<string>(),
-            tag!,
+            tag,
             lists.Values.Sum(values => values.Count),
             queries.Paths.ManifestPath);
         return new OperationOutcome(
@@ -936,8 +1227,13 @@ public sealed class WorkspaceOperations
             return added;
         }
 
+        // The dependencies are what `Add` selected on top of the request. Sync sees them as
+        // already selected, so its own report has nothing to say about them.
+        var dependencies = (added.Payload as AddPayload)?.Dependencies ?? [];
         var sync = Sync();
-        return new OperationOutcome(sync.Result, sync.Report);
+        return new OperationOutcome(
+            sync.Result,
+            new InstallPayload(sync.Result, dependencies, sync.Report.Actions));
     }
 
     public OperationOutcome RemoveSelection(IReadOnlyList<string> ids, bool prune)
@@ -992,45 +1288,49 @@ public sealed class WorkspaceOperations
         {
             var itemId = ItemId.Canonical(raw);
             var matches = ResolverDefaults.Kinds.Where(kind => indexByKey.ContainsKey((kind, itemId))).ToList();
-            if (!string.IsNullOrEmpty(kindFlag))
+            var target = ResolveAddTarget(raw, itemId, matches, kindFlag, indexByKey);
+            if (target.Problem is not null)
             {
-                if (!indexByKey.ContainsKey((kindFlag, itemId)))
-                {
-                    problems.Add(matches.Count > 0
-                        ? $"'{ItemId.Display(itemId)}' is not a {kindFlag} (it is a {matches[0]})"
-                        : UnknownMessage(raw));
-                    continue;
-                }
-
-                if (!resolved.Contains((kindFlag, itemId)))
-                {
-                    resolved.Add((kindFlag, itemId));
-                }
-
-                continue;
+                problems.Add(target.Problem);
             }
-
-            if (matches.Count == 0)
+            else if (!resolved.Contains(target.Key))
             {
-                problems.Add(UnknownMessage(raw));
-                continue;
-            }
-
-            if (matches.Count > 1)
-            {
-                problems.Add(
-                    $"'{ItemId.Display(itemId)}' exists as both a skill and an agent — "
-                    + "pass --kind skill or --kind agent");
-                continue;
-            }
-
-            if (!resolved.Contains((matches[0], itemId)))
-            {
-                resolved.Add((matches[0], itemId));
+                resolved.Add(target.Key);
             }
         }
 
         return (resolved, problems);
+    }
+
+    /// <summary>Resolves one add argument to a catalog key, or to the problem that blocks it.</summary>
+    private static ((string Kind, string Id) Key, string? Problem) ResolveAddTarget(
+        string raw,
+        string itemId,
+        List<string> matches,
+        string? kindFlag,
+        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> indexByKey)
+    {
+        if (!string.IsNullOrEmpty(kindFlag))
+        {
+            if (indexByKey.ContainsKey((kindFlag, itemId)))
+            {
+                return ((kindFlag, itemId), null);
+            }
+
+            var problem = matches.Count > 0
+                ? $"'{ItemId.Display(itemId)}' is not a {kindFlag} (it is a {matches[0]})"
+                : UnknownMessage(raw);
+            return (default, problem);
+        }
+
+        return matches.Count switch
+        {
+            0 => (default, UnknownMessage(raw)),
+            > 1 => (default,
+                $"'{ItemId.Display(itemId)}' exists as both a skill and an agent — "
+                + "pass --kind skill or --kind agent"),
+            _ => ((matches[0], itemId), null),
+        };
     }
 
     private static string UnknownMessage(string raw) =>

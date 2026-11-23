@@ -15,8 +15,6 @@ public sealed class JsoncMerger
 {
     private const char ByteOrderMark = '﻿';
     private const byte Comma = (byte)',';
-    private const byte Space = (byte)' ';
-    private const byte Tab = (byte)'\t';
 
     private static readonly JsonDocumentOptions ParseOptions = new()
     {

@@ -13,11 +13,9 @@ public static class CatalogPayloads
         IReadOnlyList<CatalogItem> items,
         CategoryVocabulary vocabulary)
     {
-        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var item in items)
-        {
-            counts[item.Category] = counts.GetValueOrDefault(item.Category) + 1;
-        }
+        var counts = items
+            .GroupBy(item => item.Category, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
         var rows = new List<CategoryRow>();
         foreach (var entry in vocabulary.Categories)
