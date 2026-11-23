@@ -15,7 +15,10 @@ public static class ClaudeRuleRenderer
     /// <summary>The suffix every instruction source and generated rule carries.</summary>
     public const string Suffix = ".instructions.md";
 
-    private static readonly Regex FieldLine = new(@"^([A-Za-z_][\w-]*)\s*:\s*(.*)$");
+    private static readonly Regex FieldLine = new(
+        @"^([A-Za-z_][\w-]*)\s*:\s*(.*)$",
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1));
 
     /// <summary>The marker comment that identifies a file as generated (and so safe to overwrite or remove).</summary>
     public static string Marker(string name) =>

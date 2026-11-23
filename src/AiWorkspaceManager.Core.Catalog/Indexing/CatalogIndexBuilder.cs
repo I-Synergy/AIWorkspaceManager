@@ -10,6 +10,15 @@ namespace AiWorkspaceManager.Core.Catalog;
 /// </summary>
 public sealed class CatalogIndexBuilder
 {
+    private const string InstructionsSuffix = ".instructions.md";
+    private const string PromptSuffix = ".prompt.md";
+    private const string AgentSuffix = ".agent.md";
+    private const string MarkdownSuffix = ".md";
+    private const string ReadmeName = "README.md";
+
+    private static readonly string[] PluginMemberSuffixes = [AgentSuffix, InstructionsSuffix, MarkdownSuffix];
+    private static readonly string[] PluginMemberKeys = ["agents", "skills"];
+
     private readonly IReadOnlyList<CatalogSource> sources;
     private readonly CategoryVocabulary vocabulary;
     private readonly Action<string>? note;
@@ -37,63 +46,10 @@ public sealed class CatalogIndexBuilder
             {
                 foreach (var entry in EnumerateEntries(kind, source))
                 {
-                    var document = KindDocument(kind, entry);
-                    if (document is null)
+                    if (ReadEntry(kind, source, entry, seen, materialised, shadowed) is { } built)
                     {
-                        continue;
+                        entries.Add(built);
                     }
-
-                    var name = ItemName(kind, entry);
-                    if (name is null)
-                    {
-                        continue;
-                    }
-
-                    var sourceRelative = RelativeToSource(source.Root, entry);
-                    var installedPath =
-                        $".ai/{ResolverDefaults.KindDirectories[kind]}/{name}{ResolverDefaults.KindSuffixes[kind]}";
-
-                    var raw = File.ReadAllText(document);
-                    var (description, declared) = kind is "plugin" or "hook"
-                        ? ManifestMetadata(kind, raw)
-                        : ItemMetadata(kind, raw);
-
-                    var itemId = ItemId.Make(source.Name, name);
-                    if (!seen.Add((kind, itemId)))
-                    {
-                        throw new ResolverException(
-                            $"duplicate catalog id '{itemId}' for kind {kind} at {installedPath}");
-                    }
-
-                    if (materialised.TryGetValue((kind, name), out var previous)
-                        && !string.Equals(previous, itemId, StringComparison.Ordinal))
-                    {
-                        shadowed.Add(new ShadowedItem(itemId, previous, installedPath));
-                        continue;
-                    }
-
-                    materialised[(kind, name)] = itemId;
-                    var (hash, count) = ContentHash.ItemHash(entry);
-                    var (category, tags) = Classify(source.Name, name, raw, kind);
-                    entries.Add(new BuildEntry(
-                        new CatalogItem
-                        {
-                            Id = itemId,
-                            Source = source.Name,
-                            Kind = kind,
-                            Name = name,
-                            Path = installedPath,
-                            SourcePath = sourceRelative,
-                            Description = description,
-                            Category = category,
-                            Tags = tags,
-                            Ref = source.Ref,
-                            Sha256 = hash,
-                            Files = count,
-                            License = source.License,
-                            Upstream = $"https://github.com/{source.Repo}/tree/{source.Ref}/{sourceRelative}",
-                        },
-                        declared));
                 }
             }
         }
@@ -114,6 +70,77 @@ public sealed class CatalogIndexBuilder
             .ToList();
 
         return new CatalogIndex { Shadowed = shadowed, Items = items };
+    }
+
+    /// <summary>
+    /// Reads one candidate path into a catalog entry, or null when it is not an item. Records
+    /// duplicates as errors and same-named items from later sources as shadowed.
+    /// </summary>
+    private BuildEntry? ReadEntry(
+        string kind,
+        CatalogSource source,
+        string entry,
+        HashSet<(string Kind, string Id)> seen,
+        Dictionary<(string Kind, string Name), string> materialised,
+        List<ShadowedItem> shadowed)
+    {
+        var document = KindDocument(kind, entry);
+        if (document is null)
+        {
+            return null;
+        }
+
+        var name = ItemName(kind, entry);
+        if (name is null)
+        {
+            return null;
+        }
+
+        var sourceRelative = RelativeToSource(source.Root, entry);
+        var installedPath =
+            $".ai/{ResolverDefaults.KindDirectories[kind]}/{name}{ResolverDefaults.KindSuffixes[kind]}";
+
+        var raw = File.ReadAllText(document);
+        var (description, declared) = kind is ResolverDefaults.PluginKind or ResolverDefaults.HookKind
+            ? ManifestMetadata(kind, raw)
+            : ItemMetadata(kind, raw);
+
+        var itemId = ItemId.Make(source.Name, name);
+        if (!seen.Add((kind, itemId)))
+        {
+            throw new ResolverException(
+                $"duplicate catalog id '{itemId}' for kind {kind} at {installedPath}");
+        }
+
+        if (materialised.TryGetValue((kind, name), out var previous)
+            && !string.Equals(previous, itemId, StringComparison.Ordinal))
+        {
+            shadowed.Add(new ShadowedItem(itemId, previous, installedPath));
+            return null;
+        }
+
+        materialised[(kind, name)] = itemId;
+        var (hash, count) = ContentHash.ItemHash(entry);
+        var (category, tags) = Classify(source.Name, raw, kind);
+        return new BuildEntry(
+            new CatalogItem
+            {
+                Id = itemId,
+                Source = source.Name,
+                Kind = kind,
+                Name = name,
+                Path = installedPath,
+                SourcePath = sourceRelative,
+                Description = description,
+                Category = category,
+                Tags = tags,
+                Ref = source.Ref,
+                Sha256 = hash,
+                Files = count,
+                License = source.License,
+                Upstream = $"https://github.com/{source.Repo}/tree/{source.Ref}/{sourceRelative}",
+            },
+            declared);
     }
 
     private static IEnumerable<string> EnumerateEntries(string kind, CatalogSource source)
@@ -147,11 +174,17 @@ public sealed class CatalogIndexBuilder
     {
         if (source.Paths is { } configured)
         {
-            var key = configured.ContainsKey(kind)
-                ? kind
-                : configured.ContainsKey(ResolverDefaults.KindDirectories[kind])
-                    ? ResolverDefaults.KindDirectories[kind]
-                    : null;
+            var directory = ResolverDefaults.KindDirectories[kind];
+            string? key = null;
+            if (configured.ContainsKey(kind))
+            {
+                key = kind;
+            }
+            else if (configured.ContainsKey(directory))
+            {
+                key = directory;
+            }
+
             if (key is not null)
             {
                 return (configured[key] ?? [])
@@ -174,53 +207,51 @@ public sealed class CatalogIndexBuilder
     {
         switch (kind)
         {
-            case "skill":
-                {
-                    var document = Path.Combine(entry, "SKILL.md");
-                    return Directory.Exists(entry) && File.Exists(document) ? document : null;
-                }
+            case ResolverDefaults.SkillKind:
+                return DirectoryDocument(entry, "SKILL.md");
 
-            case "plugin":
-                {
-                    var document = Path.Combine(entry, "plugin.json");
-                    return Directory.Exists(entry) && File.Exists(document) ? document : null;
-                }
+            case ResolverDefaults.PluginKind:
+                return DirectoryDocument(entry, "plugin.json");
 
-            case "hook":
-                {
-                    var document = Path.Combine(entry, "hooks.json");
-                    return Directory.Exists(entry) && File.Exists(document) ? document : null;
-                }
+            case ResolverDefaults.HookKind:
+                return DirectoryDocument(entry, "hooks.json");
 
             default:
-                {
-                    if (!File.Exists(entry) || !entry.EndsWith(".md", StringComparison.Ordinal))
-                    {
-                        return null;
-                    }
-
-                    var name = Path.GetFileName(entry);
-                    var readme = string.Equals(name, "README.md", StringComparison.OrdinalIgnoreCase);
-                    return kind switch
-                    {
-                        "agent" => name.EndsWith(".instructions.md", StringComparison.Ordinal)
-                            || name.EndsWith(".prompt.md", StringComparison.Ordinal)
-                                ? null
-                                : entry,
-                        "instruction" => name.EndsWith(".agent.md", StringComparison.Ordinal)
-                            || name.EndsWith(".prompt.md", StringComparison.Ordinal)
-                            || readme
-                                ? null
-                                : entry,
-                        "prompt" => name.EndsWith(".instructions.md", StringComparison.Ordinal)
-                            || name.EndsWith(".agent.md", StringComparison.Ordinal)
-                            || readme
-                                ? null
-                                : entry,
-                        _ => null,
-                    };
-                }
+                return MarkdownDocument(kind, entry);
         }
+    }
+
+    private static string? DirectoryDocument(string entry, string fileName)
+    {
+        var document = Path.Combine(entry, fileName);
+        return Directory.Exists(entry) && File.Exists(document) ? document : null;
+    }
+
+    /// <summary>Agent, instruction and prompt files share one folder, so each kind excludes the others' suffixes.</summary>
+    private static string? MarkdownDocument(string kind, string entry)
+    {
+        if (!File.Exists(entry) || !entry.EndsWith(MarkdownSuffix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var name = Path.GetFileName(entry);
+        var readme = string.Equals(name, ReadmeName, StringComparison.OrdinalIgnoreCase);
+        var foreign = kind switch
+        {
+            ResolverDefaults.AgentKind => new[] { InstructionsSuffix, PromptSuffix },
+            ResolverDefaults.InstructionKind => [AgentSuffix, PromptSuffix],
+            ResolverDefaults.PromptKind => [InstructionsSuffix, AgentSuffix],
+            _ => null,
+        };
+
+        if (foreign is null)
+        {
+            return null;
+        }
+
+        var belongsToOtherKind = foreign.Any(suffix => name.EndsWith(suffix, StringComparison.Ordinal));
+        return belongsToOtherKind || readme ? null : entry;
     }
 
     private static string? ItemName(string kind, string entry)
@@ -228,28 +259,28 @@ public sealed class CatalogIndexBuilder
         var fileName = Path.GetFileName(entry);
         switch (kind)
         {
-            case "skill":
-            case "plugin":
-            case "hook":
+            case ResolverDefaults.SkillKind:
+            case ResolverDefaults.PluginKind:
+            case ResolverDefaults.HookKind:
                 return fileName;
 
-            case "agent":
+            case ResolverDefaults.AgentKind:
                 {
-                    var name = fileName[..^".md".Length];
+                    var name = fileName[..^MarkdownSuffix.Length];
                     return name.EndsWith(".agent", StringComparison.Ordinal)
                         ? name[..^".agent".Length]
                         : name;
                 }
 
-            case "instruction":
-                return fileName.EndsWith(".instructions.md", StringComparison.Ordinal)
-                    ? fileName[..^".instructions.md".Length]
-                    : fileName[..^".md".Length];
+            case ResolverDefaults.InstructionKind:
+                return fileName.EndsWith(InstructionsSuffix, StringComparison.Ordinal)
+                    ? fileName[..^InstructionsSuffix.Length]
+                    : fileName[..^MarkdownSuffix.Length];
 
-            case "prompt":
-                return fileName.EndsWith(".prompt.md", StringComparison.Ordinal)
-                    ? fileName[..^".prompt.md".Length]
-                    : fileName[..^".md".Length];
+            case ResolverDefaults.PromptKind:
+                return fileName.EndsWith(PromptSuffix, StringComparison.Ordinal)
+                    ? fileName[..^PromptSuffix.Length]
+                    : fileName[..^MarkdownSuffix.Length];
 
             default:
                 return null;
@@ -260,8 +291,10 @@ public sealed class CatalogIndexBuilder
     {
         var meta = Frontmatter.Parse(raw);
         var description = Frontmatter.OneLine(meta.GetString("description"));
-        IReadOnlyList<string> declared = kind == "agent"
-            ? meta.GetNameList("skills")
+        // A skill names its dependencies in `requires:`. An agent names the skills it drives in
+        // `skills:` and, since agents can hand work to other agents, may also use `requires:`.
+        IReadOnlyList<string> declared = kind == ResolverDefaults.AgentKind
+            ? [.. meta.GetNameList("skills"), .. meta.GetNameList("requires")]
             : meta.GetNameList("requires");
         return (description, declared);
     }
@@ -295,7 +328,13 @@ public sealed class CatalogIndexBuilder
 
         _ = name;
         return (Frontmatter.OneLine(description),
-            kind == "plugin" ? PluginMembers(raw) : []);
+            kind == ResolverDefaults.PluginKind ? PluginMembers(raw) : []);
+    }
+
+    private static string StripExtension(string name)
+    {
+        var suffix = PluginMemberSuffixes.FirstOrDefault(s => name.EndsWith(s, StringComparison.Ordinal));
+        return suffix is null ? name : name[..^suffix.Length];
     }
 
     private static List<string> PluginMembers(string raw)
@@ -310,51 +349,10 @@ public sealed class CatalogIndexBuilder
                 return [];
             }
 
-            var names = new List<string>();
-            foreach (var block in extensions.EnumerateObject())
-            {
-                if (block.Value.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
-
-                foreach (var key in new[] { "agents", "skills" })
-                {
-                    if (!block.Value.TryGetProperty(key, out var paths)
-                        || paths.ValueKind != JsonValueKind.Array)
-                    {
-                        continue;
-                    }
-
-                    foreach (var path in paths.EnumerateArray())
-                    {
-                        if (path.ValueKind != JsonValueKind.String)
-                        {
-                            continue;
-                        }
-
-                        var cleaned = (path.GetString() ?? string.Empty)
-                            .Trim()
-                            .TrimEnd('/')
-                            .Split('/')[^1];
-                        foreach (var suffix in new[] { ".agent.md", ".instructions.md", ".md" })
-                        {
-                            if (cleaned.EndsWith(suffix, StringComparison.Ordinal))
-                            {
-                                cleaned = cleaned[..^suffix.Length];
-                                break;
-                            }
-                        }
-
-                        if (cleaned.Length > 0)
-                        {
-                            names.Add(cleaned);
-                        }
-                    }
-                }
-            }
-
-            return names;
+            return extensions.EnumerateObject()
+                .Where(block => block.Value.ValueKind == JsonValueKind.Object)
+                .SelectMany(block => PluginMemberNames(block.Value))
+                .ToList();
         }
         catch (JsonException)
         {
@@ -362,13 +360,38 @@ public sealed class CatalogIndexBuilder
         }
     }
 
+    /// <summary>The item names a plugin's <c>agents</c> and <c>skills</c> path lists point at.</summary>
+    private static IEnumerable<string> PluginMemberNames(JsonElement block)
+    {
+        foreach (var key in PluginMemberKeys)
+        {
+            if (!block.TryGetProperty(key, out var paths) || paths.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var path in paths.EnumerateArray().Where(path => path.ValueKind == JsonValueKind.String))
+            {
+                var cleaned = StripExtension((path.GetString() ?? string.Empty)
+                    .Trim()
+                    .TrimEnd('/')
+                    .Split('/')[^1]);
+                if (cleaned.Length > 0)
+                {
+                    yield return cleaned;
+                }
+            }
+        }
+    }
+
     private (string Category, IReadOnlyList<string> Tags) Classify(
         string sourceName,
-        string name,
         string raw,
         string kind)
     {
-        var meta = kind is "plugin" or "hook" ? Frontmatter.Empty : Frontmatter.Parse(raw);
+        var meta = kind is ResolverDefaults.PluginKind or ResolverDefaults.HookKind
+            ? Frontmatter.Empty
+            : Frontmatter.Parse(raw);
         var tags = meta.GetNameList("tags");
         var defined = vocabulary.Ids().ToHashSet(StringComparer.Ordinal);
 
@@ -384,12 +407,10 @@ public sealed class CatalogIndexBuilder
             return (declared, tags.Where(tag => tag != declared).ToList());
         }
 
-        foreach (var tag in tags)
+        var match = tags.FirstOrDefault(defined.Contains);
+        if (match is not null)
         {
-            if (defined.Contains(tag))
-            {
-                return (tag, tags.Where(entry => entry != tag).ToList());
-            }
+            return (match, tags.Where(entry => entry != match).ToList());
         }
 
         var fallback = rules?.Default;
@@ -402,15 +423,56 @@ public sealed class CatalogIndexBuilder
         return relative.StartsWith("..", StringComparison.Ordinal) ? Path.GetFileName(entry) : relative;
     }
 
+    /// <summary>
+    /// Turns declared names into catalog ids. A dependency may name a skill or an agent, so the
+    /// lookup tries both; an unresolved name falls back to a skill id in the same source.
+    /// </summary>
+    /// <summary>
+    /// The catalog id a declared dependency names. An agent's <c>skills:</c> entry names a skill,
+    /// so it never resolves to an agent. A <c>requires:</c> entry may name either kind: a
+    /// kind-qualified entry picks that kind outright, otherwise a skill wins over an agent so
+    /// existing catalogs keep resolving. An unknown name becomes a skill id in this source and
+    /// surfaces later as an unresolved dependency.
+    /// </summary>
+    private static string ResolveDependencyId(
+        CatalogItem item,
+        string name,
+        Dictionary<(string Kind, string Name), string> idsByName)
+    {
+        if (name.StartsWith(ResolverDefaults.AgentKind + ":", StringComparison.Ordinal)
+            && idsByName.TryGetValue((ResolverDefaults.AgentKind, name), out var qualifiedAgent))
+        {
+            return qualifiedAgent;
+        }
+
+        if (idsByName.TryGetValue((ResolverDefaults.SkillKind, name), out var skillId))
+        {
+            return skillId;
+        }
+
+        if (idsByName.TryGetValue((ResolverDefaults.AgentKind, name), out var agentId))
+        {
+            return agentId;
+        }
+
+        return ItemId.Make(item.Source, name);
+    }
+
+    /// <summary>
+    /// Turns declared names into catalog ids. An agent's <c>skills:</c> names skills only, so it
+    /// resolves against skills; a <c>requires:</c> entry may name either kind. An item never
+    /// depends on itself: `security` is both a skill and an agent, and the agent listing the
+    /// `security` skill must not resolve to its own id.
+    /// </summary>
     private static CatalogItem CopyWithRequires(
         CatalogItem item,
         IReadOnlyList<string> declared,
         Dictionary<(string Kind, string Name), string> idsByName)
     {
         var requires = declared
-            .Select(name => idsByName.TryGetValue(("skill", name), out var id)
-                ? id
-                : ItemId.Make(item.Source, name))
+            .Select(name => ResolveDependencyId(item, name, idsByName))
+            .Where(id => !string.Equals(id, item.Id, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
             .ToList();
 
         return new CatalogItem

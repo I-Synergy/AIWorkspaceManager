@@ -14,4 +14,5 @@ public sealed record SyncReport(
     int MarkersRemoved,
     bool LegacyIndexRemoved,
     bool Pruned,
-    IReadOnlyList<string> Conflicts);
+    IReadOnlyList<string> Conflicts,
+    IReadOnlyList<RequiredItem> Dependencies);

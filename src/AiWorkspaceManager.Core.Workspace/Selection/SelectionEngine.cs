@@ -98,38 +98,40 @@ public sealed class SelectionEngine
 
                 foreach (var entry in entries)
                 {
-                    if (entry.All)
-                    {
-                        foreach (var key in indexByKey.Keys
-                            .Where(key => key.Kind == kind)
-                            .OrderBy(key => key.Kind, StringComparer.Ordinal)
-                            .ThenBy(key => key.Id, StringComparer.Ordinal))
-                        {
-                            if (!ids.Contains(key.Id))
-                            {
-                                ids.Add(key.Id);
-                            }
-                        }
-
-                        continue;
-                    }
-
-                    var itemId = ItemId.Canonical(entry.Id ?? string.Empty);
-                    if (strict && !indexByKey.ContainsKey((kind, itemId)))
-                    {
-                        throw new ResolverException(
-                            $"preset '{name}' references unknown {kind} '{entry.Id}'");
-                    }
-
-                    if (!ids.Contains(itemId))
-                    {
-                        ids.Add(itemId);
-                    }
+                    AddPresetEntry(ids, kind, name, entry, strict);
                 }
             }
         }
 
         return expanded;
+    }
+
+    /// <summary>Adds one preset entry to a kind's id list, resolving <c>all</c> and bare names.</summary>
+    private void AddPresetEntry(List<string> ids, string kind, string presetName, PresetEntry entry, bool strict)
+    {
+        if (entry.All)
+        {
+            var all = indexByKey.Keys
+                .Where(key => key.Kind == kind)
+                .OrderBy(key => key.Kind, StringComparer.Ordinal)
+                .ThenBy(key => key.Id, StringComparer.Ordinal)
+                .Select(key => key.Id)
+                .Where(id => !ids.Contains(id));
+            ids.AddRange(all);
+            return;
+        }
+
+        var itemId = ItemId.Canonical(entry.Id ?? string.Empty);
+        if (strict && !indexByKey.ContainsKey((kind, itemId)))
+        {
+            throw new ResolverException(
+                $"preset '{presetName}' references unknown {kind} '{entry.Id}'");
+        }
+
+        if (!ids.Contains(itemId))
+        {
+            ids.Add(itemId);
+        }
     }
 
     /// <summary>Preset ids only — what a card would add, with no manifest list and no excludes.</summary>
@@ -157,34 +159,42 @@ public sealed class SelectionEngine
             foreach (var raw in rawIds)
             {
                 var itemId = ResolveManifestId(kind, raw);
-                if (!indexByKey.ContainsKey((kind, itemId)) && strict)
+                if (strict)
                 {
-                    var other = kind == "skill" ? "agent" : "skill";
-                    if (indexByKey.ContainsKey((other, itemId)))
-                    {
-                        throw new ResolverException(
-                            $"'{ItemId.Display(itemId)}' is an {other}, but it is listed under "
-                            + $"'{manifestKey}' in ai.json");
-                    }
-
-                    throw new ResolverException(
-                        $"unknown id '{raw}' — not in the catalog "
-                        + "(run 'catalog.py index' if the tree changed)");
+                    EnsureKnown(kind, manifestKey, raw, itemId);
                 }
 
-                if (excludes.Contains(itemId))
+                if (excludes.Contains(itemId) || selected.Contains((kind, itemId)))
                 {
                     continue;
                 }
 
-                if (!selected.Contains((kind, itemId)))
-                {
-                    selected.Add((kind, itemId));
-                }
+                selected.Add((kind, itemId));
             }
         }
 
         return selected;
+    }
+
+    /// <summary>Throws a helpful error when a strict selection names something the catalog lacks.</summary>
+    private void EnsureKnown(string kind, string manifestKey, string raw, string itemId)
+    {
+        if (indexByKey.ContainsKey((kind, itemId)))
+        {
+            return;
+        }
+
+        var other = kind == ResolverDefaults.SkillKind ? ResolverDefaults.AgentKind : ResolverDefaults.SkillKind;
+        if (indexByKey.ContainsKey((other, itemId)))
+        {
+            throw new ResolverException(
+                $"'{ItemId.Display(itemId)}' is an {other}, but it is listed under "
+                + $"'{manifestKey}' in ai.json");
+        }
+
+        throw new ResolverException(
+            $"unknown id '{raw}' — not in the catalog "
+            + "(run 'catalog.py index' if the tree changed)");
     }
 
     /// <summary>The selection plus everything it requires, dependencies first.</summary>
@@ -193,7 +203,6 @@ public sealed class SelectionEngine
         var ordered = new List<(string Kind, string Id)>();
         var done = new HashSet<(string Kind, string Id)>();
         var visiting = new List<(string Kind, string Id)>();
-        var missing = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 
         void Visit(string kind, string itemId, string? requiredBy)
         {
@@ -213,15 +222,13 @@ public sealed class SelectionEngine
 
             if (!indexByKey.TryGetValue(key, out var item))
             {
+                // A dependency the catalog cannot resolve is a broken catalog, not a user typo:
+                // fail here rather than installing a selection that is quietly incomplete.
                 if (requiredBy is not null)
                 {
-                    if (!missing.TryGetValue(itemId, out var whoNeeds))
-                    {
-                        whoNeeds = new SortedSet<string>(StringComparer.Ordinal);
-                        missing[itemId] = whoNeeds;
-                    }
-
-                    whoNeeds.Add(requiredBy);
+                    throw new ResolverException(
+                        $"the catalog declares a dependency that does not exist: "
+                        + $"{ItemId.Display(itemId)} (required by {ItemId.Display(requiredBy)})");
                 }
 
                 return;
@@ -230,8 +237,14 @@ public sealed class SelectionEngine
             visiting.Add(key);
             foreach (var dependency in item.Requires)
             {
-                var dependencyKind = indexByKey.ContainsKey(("skill", dependency)) ? "skill" : "agent";
-                Visit(dependencyKind, dependency, itemId);
+                if (DependencyKey(dependency) is not { } resolved)
+                {
+                    throw new ResolverException(
+                        $"the catalog declares a dependency that does not exist: "
+                        + $"{dependency} (required by {ItemId.Display(itemId)})");
+                }
+
+                Visit(resolved.Kind, resolved.ItemId, itemId);
             }
 
             visiting.RemoveAt(visiting.Count - 1);
@@ -242,16 +255,6 @@ public sealed class SelectionEngine
         foreach (var (kind, id) in selection)
         {
             Visit(kind, id, null);
-        }
-
-        if (missing.Count > 0)
-        {
-            var detail = string.Join(
-                "; ",
-                missing.OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                    .Select(pair => $"{ItemId.Display(pair.Key)} (required by "
-                        + $"{string.Join(", ", pair.Value.Select(ItemId.Display))})"));
-            throw new ResolverException($"the catalog declares dependencies that do not exist: {detail}");
         }
 
         return ordered;
@@ -272,6 +275,153 @@ public sealed class SelectionEngine
 
         var matches = BareMatches(text, kind);
         return matches.Count == 1 ? matches[0] : itemId;
+    }
+
+    /// <summary>
+    /// The catalog key a <c>requires:</c> entry names. Null when the catalog has nothing that
+    /// matches. See <see cref="ResolveDependency"/> for the forms an entry may take.
+    /// </summary>
+    public (string Kind, string ItemId)? DependencyKey(string raw) => ResolveDependency(raw);
+
+    /// <summary>
+    /// Resolves one <c>requires:</c> entry. Four forms are accepted, in this order:
+    /// <list type="bullet">
+    /// <item><c>agent:name</c> — an agent, whatever else carries the name.</item>
+    /// <item><c>skill:name</c> — a skill, whatever else carries the name.</item>
+    /// <item>a full catalog id such as <c>template:alpha</c> — the item it names.</item>
+    /// <item>a bare name — the skill, then the agent. A skill wins a name both kinds carry, so
+    /// catalogs written before agents could be dependencies keep resolving.</item>
+    /// </list>
+    /// A name that matches more than one item of the chosen kind is ambiguous, not a dependency.
+    /// </summary>
+    private (string Kind, string ItemId)? ResolveDependency(string raw)
+    {
+        var text = raw.Trim();
+        if (text.Length == 0)
+        {
+            return null;
+        }
+
+        foreach (var (prefix, kind) in KindPrefixes)
+        {
+            if (!text.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var matches = BareMatches(text[prefix.Length..].Trim(), kind);
+            return matches.Count == 1 ? (kind, matches[0]) : null;
+        }
+
+        var exact = indexByKey.Keys
+            .Where(key => string.Equals(key.Id, text, StringComparison.Ordinal))
+            .ToList();
+        if (exact.Count == 1)
+        {
+            return exact[0];
+        }
+
+        // A full id both kinds carry (`template:security`) names the skill, matching the bare-name
+        // rule, so a catalog that stores ids keeps resolving the way it did before agents existed.
+        if (exact.Count > 1)
+        {
+            var skill = exact.Where(key => key.Kind == ResolverDefaults.SkillKind).ToList();
+            return skill.Count == 1 ? skill[0] : null;
+        }
+
+        foreach (var kind in new[] { ResolverDefaults.SkillKind, ResolverDefaults.AgentKind })
+        {
+            var matches = BareMatches(text, kind);
+            if (matches.Count == 1)
+            {
+                return (kind, matches[0]);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Kind-qualified prefixes a <c>requires:</c> entry may use.</summary>
+    private static readonly (string Prefix, string Kind)[] KindPrefixes =
+    [
+        (ResolverDefaults.AgentKind + ":", ResolverDefaults.AgentKind),
+        (ResolverDefaults.SkillKind + ":", ResolverDefaults.SkillKind),
+    ];
+
+    /// <summary>
+    /// Every dependency <paramref name="roots"/> pull in, transitively, as the keys the catalog
+    /// resolves them to. Dependencies outside the catalog are left out: sync reports them.
+    /// </summary>
+    public IReadOnlyList<(string Kind, string Id)> RequiredClosure(IEnumerable<(string Kind, string Id)> roots)
+    {
+        var found = new List<(string Kind, string Id)>();
+        var done = new HashSet<(string Kind, string Id)>();
+        var pending = new Queue<(string Kind, string Id)>(roots);
+        while (pending.Count > 0)
+        {
+            var key = pending.Dequeue();
+            if (!done.Add(key) || !indexByKey.TryGetValue(key, out var item))
+            {
+                continue;
+            }
+
+            foreach (var dependency in item.Requires)
+            {
+                if (DependencyKey(dependency) is not { } resolved || !done.Contains(resolved))
+                {
+                    continue;
+                }
+
+                found.Add(resolved);
+                pending.Enqueue(resolved);
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// The selection plus the dependencies it installs, each tagged with the item that pulled it
+    /// in. Already-selected items are tagged <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>seen</c> is seeded from the selection, so a dependency that is already selected is not
+    /// tagged. The tag is the id of the entry being expanded, read from the entry itself so it
+    /// cannot be confused with the tuple's inferred element names.
+    /// </remarks>
+    public List<(string Kind, string Id, string? RequiredBy)> WithDependencies(
+        IEnumerable<(string Kind, string Id)> selection)
+    {
+        var entries = new List<(string Kind, string Id, string? RequiredBy)>();
+        var seen = new HashSet<(string Kind, string Id)>();
+        foreach (var (kind, itemId) in selection)
+        {
+            if (seen.Add((kind, itemId)))
+            {
+                entries.Add((kind, itemId, null));
+            }
+        }
+
+        for (var position = 0; position < entries.Count; position++)
+        {
+            var (kind, itemId, _) = entries[position];
+            if (!indexByKey.TryGetValue((kind, itemId), out var item))
+            {
+                continue;
+            }
+
+            foreach (var dependency in item.Requires)
+            {
+                if (DependencyKey(dependency) is not { } resolved || !seen.Add(resolved))
+                {
+                    continue;
+                }
+
+                entries.Add((resolved.Kind, resolved.ItemId, itemId));
+            }
+        }
+
+        return entries;
     }
 
     /// <summary>Catalog ids whose manifest name is <paramref name="name"/>, optionally of one kind.</summary>

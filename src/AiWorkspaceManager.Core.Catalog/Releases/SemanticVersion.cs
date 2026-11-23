@@ -60,8 +60,15 @@ public sealed partial record SemanticVersion(
     public static bool operator >=(SemanticVersion? left, SemanticVersion? right) =>
         Compare(left, right) >= 0;
 
-    private static int Compare(SemanticVersion? left, SemanticVersion? right) =>
-        left is null ? (right is null ? 0 : -1) : left.CompareTo(right);
+    private static int Compare(SemanticVersion? left, SemanticVersion? right)
+    {
+        if (left is null)
+        {
+            return right is null ? 0 : -1;
+        }
+
+        return left.CompareTo(right);
+    }
 
     /// <summary><c>v1.6.0</c> → a version; <c>main</c>, <c>latest</c> and <c>v1.6</c> → null.</summary>
     public static SemanticVersion? TryParse(string? tag)

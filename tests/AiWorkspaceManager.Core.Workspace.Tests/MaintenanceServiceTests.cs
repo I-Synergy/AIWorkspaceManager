@@ -47,8 +47,7 @@ public sealed class MaintenanceServiceTests
         var paths = new WorkspacePaths(Path.Combine(temp.Root, "project"));
         var queries = new WorkspaceQueries(paths, new GitSourceFetcher(paths, offline: true), offline: true);
         var setup = new WorkspaceSetupService(queries);
-        var operations = new WorkspaceOperations(queries, setup);
-        return (temp, queries, new MaintenanceService(queries, setup, operations));
+        return (temp, queries, new MaintenanceService(queries, setup));
     }
 
     [TestMethod]
@@ -122,7 +121,7 @@ public sealed class MaintenanceServiceTests
             offline: true,
             Path.Combine(temp.Root, "bundle"));
         var setup = new WorkspaceSetupService(queries);
-        var service = new MaintenanceService(queries, setup, new WorkspaceOperations(queries, setup));
+        var service = new MaintenanceService(queries, setup);
 
         var outcome = service.VendorTooling();
 
@@ -139,7 +138,7 @@ public sealed class MaintenanceServiceTests
     [TestCategory("Unit")]
     public void Notice_WritesTheAttributionTable()
     {
-        var (temp, queries, service) = Subject();
+        var (temp, _, service) = Subject();
         using var scope = temp;
 
         var outcome = service.Notice();
@@ -165,7 +164,7 @@ public sealed class MaintenanceServiceTests
         Assert.IsTrue(payload.Written);
         Assert.IsTrue(File.Exists(queries.Paths.IndexPath));
         Assert.IsTrue(payload.Compact is not null && File.Exists(payload.Compact));
-        StringAssert.Contains(File.ReadAllText(payload.Compact!), "`alpha` (skill)");
+        StringAssert.Contains(File.ReadAllText(payload.Compact), "`alpha` (skill)");
     }
 
     [TestMethod]

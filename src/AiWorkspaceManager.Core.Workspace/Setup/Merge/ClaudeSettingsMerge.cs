@@ -168,14 +168,7 @@ public static class ClaudeSettingsMerge
                     continue;
                 }
 
-                var missing = new List<JsonNode?>();
-                foreach (var hook in templateHookList)
-                {
-                    if (known.Add(HookKey(hook)))
-                    {
-                        missing.Add(hook);
-                    }
-                }
+                var missing = templateHookList.Where(hook => known.Add(HookKey(hook))).ToList();
 
                 if (missing.Count == 0)
                 {

@@ -69,7 +69,7 @@ public sealed class LockDocument
         var root = new JsonObject
         {
             ["lockVersion"] = 1,
-            ["resolved"] = new JsonArray(sorted.Select(entry => (JsonNode)entry.Json.DeepClone()).ToArray()),
+            ["resolved"] = new JsonArray(sorted.Select(entry => entry.Json.DeepClone()).ToArray()),
         };
         JsonFiles.Write(path, root);
     }
@@ -80,7 +80,7 @@ public sealed class LockDocument
         var sorted = lockDocument.Entries
             .OrderBy(entry => entry.Kind, StringComparer.Ordinal)
             .ThenBy(entry => entry.Id, StringComparer.Ordinal)
-            .Select(entry => (JsonNode)entry.Json.DeepClone())
+            .Select(entry => entry.Json.DeepClone())
             .ToArray();
         var root = new JsonObject
         {

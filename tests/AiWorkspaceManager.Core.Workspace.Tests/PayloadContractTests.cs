@@ -81,7 +81,10 @@ public sealed class PayloadContractTests
     public void MutationPayloads_CarryTheirCamelCaseFields()
     {
         StringAssert.Contains(Serialize(new LockPayload("lock", ["alpha"], ["alpha"])), "\"locked\":");
-        StringAssert.Contains(Serialize(new AddPayload([new ItemRef("template:alpha", "skill")], "p")), "\"added\":");
+        StringAssert.Contains(Serialize(new AddPayload([new ItemRef("template:alpha", "skill")], "p", [])), "\"added\":");
+        StringAssert.Contains(
+            Serialize(new AddPayload([], "p", [new RequiredItem("template:alpha", "skill", "template:beta")])),
+            "\"dependencies\":[{\"id\":\"template:alpha\",\"kind\":\"skill\",\"requiredBy\":\"template:beta\"}]");
         StringAssert.Contains(
             Serialize(new RemovePayload([new RemovedItem("template:alpha", "skill", "list")],
                 [new PrunedItem("template:alpha", "skill", ".ai/skills/alpha", true, 1)])),

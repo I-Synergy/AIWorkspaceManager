@@ -26,12 +26,13 @@ function reportFromSetup(setup: BootstrapPayload): RunReport {
   return { title: "Setup", files: setup.agentConfig?.files ?? [], lines: setup.mirror ?? [] };
 }
 
-function describeFailure(result: Result<CliResult>): string {
+function describeFailure<T>(result: Result<T>, toResult: (value: T) => CliResult): string {
   if (!result.ok) {
     return result.error;
   }
-  const detail = (result.value.stderr || result.value.stdout).trim().split(/\r?\n/)[0];
-  return detail || `resolver exited ${result.value.code}`;
+  const cli = toResult(result.value);
+  const detail = (cli.stderr || cli.stdout).trim().split(/\r?\n/)[0];
+  return detail || `resolver exited ${cli.code}`;
 }
 
 /**
@@ -342,10 +343,11 @@ class Store extends EventTarget {
    * Run a mutating action, then reload so the UI reflects the new truth. With `keepReport`, the
    * action's output lines (the sync and mirror report) become the Settings report.
    */
-  async runAsync(
+  async runAsync<T = CliResult>(
     label: string,
-    action: () => Promise<Result<CliResult>>,
+    action: () => Promise<Result<T>>,
     keepReport = false,
+    toResult: (value: T) => CliResult = (value) => value as unknown as CliResult,
   ): Promise<boolean> {
     this.loading = true;
     this.fire();
@@ -355,11 +357,11 @@ class Store extends EventTarget {
         this.report = {
           title: label,
           files: [],
-          lines: result.value.stdout.split(/\r?\n/).filter((line) => line.trim().length > 0),
+          lines: toResult(result.value).stdout.split(/\r?\n/).filter((line) => line.trim().length > 0),
         };
       }
-      if (!result.ok || result.value.code !== 0) {
-        this.notify("error", `${label}: ${describeFailure(result)}`);
+      if (!result.ok || toResult(result.value).code !== 0) {
+        this.notify("error", `${label}: ${describeFailure(result, toResult)}`);
         return false;
       }
       this.notify("info", `${label} — done.`);
@@ -378,7 +380,11 @@ class Store extends EventTarget {
   }
 
   install(ids: string[]): Promise<boolean> {
-    return this.runAsync(`Installing ${ids.length} item(s)`, () => hostApi.install({ Ids: ids }));
+    return this.runAsync(
+      `Installing ${ids.length} item(s)`,
+      () => hostApi.install({ Ids: ids }),
+      false,
+      (payload) => payload.result);
   }
 
   /* ── multi-select ───────────────────────────────────────────────────────── */

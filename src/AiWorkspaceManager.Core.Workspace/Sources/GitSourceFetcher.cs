@@ -14,6 +14,7 @@ namespace AiWorkspaceManager.Core.Workspace;
 public sealed partial class GitSourceFetcher : ISourceFetcher
 {
     private const int TagTimeoutMs = 15_000;
+    private const string Quiet = "--quiet";
 
     private readonly WorkspacePaths paths;
     private readonly bool offline;
@@ -49,13 +50,13 @@ public sealed partial class GitSourceFetcher : ISourceFetcher
             var started = Stopwatch.GetTimestamp();
             var fetch = Run(
                 "git",
-                ["-C", target, "fetch", "--quiet", "--depth", "1", "origin", reference],
+                ["-C", target, "fetch", Quiet, "--depth", "1", "origin", reference],
                 timeoutMs: 60_000);
             if (fetch.Code == 0)
             {
                 var checkout = Run(
                     "git",
-                    ["-C", target, "checkout", "--quiet", "--force", "FETCH_HEAD"],
+                    ["-C", target, "checkout", Quiet, "--force", "FETCH_HEAD"],
                     timeoutMs: 30_000);
                 if (checkout.Code == 0)
                 {
@@ -74,7 +75,7 @@ public sealed partial class GitSourceFetcher : ISourceFetcher
         var cloneStarted = Stopwatch.GetTimestamp();
         var clone = Run(
             "git",
-            ["clone", "--quiet", "--depth", "1", "--branch", reference, url, target],
+            ["clone", Quiet, "--depth", "1", "--branch", reference, url, target],
             timeoutMs: 120_000);
         if (clone.Code == 0)
         {
@@ -89,10 +90,10 @@ public sealed partial class GitSourceFetcher : ISourceFetcher
         Directory.CreateDirectory(target);
         (string[] Arguments, string? WorkingDirectory)[] steps =
         [
-            (["init", "--quiet"], target),
+            (["init", Quiet], target),
             (["remote", "add", "origin", url], target),
-            (["fetch", "--quiet", "--depth", "1", "origin", reference], target),
-            (["checkout", "--quiet", "FETCH_HEAD"], target),
+            (["fetch", Quiet, "--depth", "1", "origin", reference], target),
+            (["checkout", Quiet, "FETCH_HEAD"], target),
         ];
         foreach (var (arguments, workingDirectory) in steps)
         {
@@ -124,7 +125,6 @@ public sealed partial class GitSourceFetcher : ISourceFetcher
         }
 
         Console.Error.WriteLine($"reading tags for {repo} ...");
-        var started = Stopwatch.GetTimestamp();
         var done = Run("git", ["ls-remote", "--tags", "--refs", url], timeoutMs: TagTimeoutMs);
         if (done.Code != 0)
         {

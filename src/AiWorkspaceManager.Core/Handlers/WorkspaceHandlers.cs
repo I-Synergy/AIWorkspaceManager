@@ -27,6 +27,7 @@ public sealed class WorkspaceHandlers
             ["getUpdates"] = Run(parameters => Session(parameters).Queries.Updates()),
             ["getReleases"] = Run(parameters => Session(parameters).Queries.Release()),
             ["install"] = Run(parameters => Install(parameters)),
+            ["installWithDependencies"] = Run(parameters => InstallWithDependencies(parameters)),
             ["remove"] = Run(parameters => Remove(parameters)),
             ["sync"] = Run(parameters => Sync(parameters)),
             ["updateItems"] = Run(parameters => UpdateItems(parameters)),
@@ -73,6 +74,14 @@ public sealed class WorkspaceHandlers
     {
         var session = Session(parameters);
         return session.Operations.Install(Ids(parameters)).Result;
+    }
+
+    private InstallPayload InstallWithDependencies(JsonElement parameters)
+    {
+        var session = Session(parameters);
+        var outcome = session.Operations.Install(Ids(parameters));
+        return outcome.Payload as InstallPayload
+            ?? new InstallPayload(outcome.Result, [], []);
     }
 
     private CliResult Remove(JsonElement parameters)

@@ -11,6 +11,12 @@ namespace AiWorkspaceManager.Core.Workspace;
 /// </summary>
 public sealed class WorkspaceQueries
 {
+    private const string LockedKey = "locked";
+    private const string CatalogDirectory = "catalog";
+
+    /// <summary>Row state for an item present only because a lock entry records it.</summary>
+    private const string LockedState = "locked";
+
     private readonly WorkspacePaths paths;
     private readonly SourceCatalog sources;
     private CategoryVocabulary? categories;
@@ -77,12 +83,9 @@ public sealed class WorkspaceQueries
         if (!Offline)
         {
             var declared = data.GetObject("sources")!;
-            foreach (var name in BuiltinSources.Names)
+            foreach (var name in BuiltinSources.Names.Where(name => !declared.ContainsKey(name)))
             {
-                if (!declared.ContainsKey(name))
-                {
-                    declared[name] = BuiltinSources.Create(name);
-                }
+                declared[name] = BuiltinSources.Create(name);
             }
         }
 
@@ -111,15 +114,15 @@ public sealed class WorkspaceQueries
         }
 
         data["materialize"] = "link";
-        data["exclude"] = new JsonArray();
-        data["locked"] = new JsonArray();
+        data[ResolverDefaults.ExcludeKey] = new JsonArray();
+        data[LockedKey] = new JsonArray();
         return ManifestDocument.Temporary(data);
     }
 
     public string ManifestSchema()
     {
-        var rootCatalog = Path.Combine(paths.Root, "catalog");
-        var aiCatalog = Path.Combine(paths.AiDirectory, "catalog");
+        var rootCatalog = Path.Combine(paths.Root, CatalogDirectory);
+        var aiCatalog = Path.Combine(paths.AiDirectory, CatalogDirectory);
         return Directory.Exists(rootCatalog) && !Directory.Exists(aiCatalog)
             ? "../catalog/schemas/ai.schema.json"
             : "catalog/schemas/ai.schema.json";
@@ -207,7 +210,6 @@ public sealed class WorkspaceQueries
     {
         var manifest = ManifestOrStarter();
         var index = BuildIndex(manifest, refresh);
-        var indexByKey = index.ByKey();
         var engine = Engine(index);
         var selected = engine.EffectiveSelection(manifest, strict: false);
         var selectedKeys = selected.ToHashSet();
@@ -222,94 +224,13 @@ public sealed class WorkspaceQueries
         var mode = MaterializeMode(manifest);
         var templateRoot = roots.GetValueOrDefault(ResolverDefaults.TemplateSource, paths.Root);
 
-        var requiredBy = new Dictionary<(string Kind, string Id), List<string>>();
-        foreach (var item in index.Items)
-        {
-            foreach (var dependency in item.Requires)
-            {
-                var key = ("skill", dependency);
-                if (!requiredBy.TryGetValue(key, out var who))
-                {
-                    who = [];
-                    requiredBy[key] = who;
-                }
-
-                who.Add(item.Id);
-            }
-        }
-
+        var requiredBy = RequiredByIndex(index);
         var summary = new MutableSummary { Available = index.Items.Count, Selected = selected.Count };
         var items = new List<BrowseItem>();
         foreach (var item in index.Items)
         {
-            var key = (item.Kind, item.Id);
             var sourceRoot = roots.GetValueOrDefault(item.Source, paths.Root);
-            var sameDirectory = WorkspacePaths.SamePath(sourceRoot, paths.Root);
-            var target = paths.TargetPath(item.Kind, item.Name);
-            var entry = locked.GetValueOrDefault(key);
-            var isSelected = selectedKeys.Contains(key);
-            var isRecorded = entry is not null;
-
-            // A lock entry is physical installed state even when the manifest no longer selects
-            // it (for example after a selection was cleared or an item was deselected): show it
-            // as installed instead of pretending it is an untouched catalog row.
-            var state = isSelected || isRecorded
-                ? StatusEvaluator.Evaluate(item.Kind, item, target, entry, sameDirectory)
-                : ItemStatus.Available;
-            if (isSelected && frozen.Contains(item.Id) && state is
-                ItemStatus.UpstreamChanged or ItemStatus.LocalModified or ItemStatus.Both)
-            {
-                state = ItemStatus.Locked;
-            }
-
-            var exists = PathOps.ExistsOrLink(target);
-            var localModified = entry is not null
-                && exists
-                && !string.Equals(ContentHash.InstalledHash(item, target), entry.Sha256, StringComparison.Ordinal);
-            var moved = entry is not null && StatusEvaluator.UpstreamChanged(item, entry);
-
-            if (state is ItemStatus.Ok or ItemStatus.Locked)
-            {
-                summary.Installed++;
-            }
-            else if (state != ItemStatus.Available)
-            {
-                summary.Drift++;
-            }
-
-            if (state == ItemStatus.UpstreamChanged)
-            {
-                summary.Updates++;
-            }
-
-            if (state == ItemStatus.Both)
-            {
-                summary.Conflicts++;
-            }
-
-            items.Add(new BrowseItem(
-                item.Id,
-                ItemId.Display(item.Id),
-                item.Kind,
-                item.Name,
-                item.Path,
-                item.Description,
-                item.Category,
-                item.Tags,
-                item.Source,
-                item.Ref,
-                item.License,
-                item.Upstream,
-                item.Sha256,
-                item.Files,
-                item.Requires,
-                requiredBy.GetValueOrDefault(key)?.OrderBy(id => id, StringComparer.Ordinal).ToList() ?? [],
-                isSelected,
-                state,
-                exists && (isSelected || isRecorded),
-                frozen.Contains(item.Id),
-                localModified,
-                moved));
+            items.Add(BrowseRow(item, sourceRoot, selectedKeys, locked, frozen, requiredBy, summary));
         }
 
         var sourcePayload = new BrowseSource(
@@ -331,9 +252,110 @@ public sealed class WorkspaceQueries
                 summary.Updates,
                 summary.Conflicts),
             SourceCatalog.Rows(manifest),
-            PresetCards(indexByKey, engine),
+            PresetCards(engine),
             CatalogPayloads.CategoryRows(index.Items, Categories),
             items);
+    }
+
+    /// <summary>Which catalog ids require each dependency, so a card can name its dependents.</summary>
+    private static Dictionary<(string Kind, string Id), List<string>> RequiredByIndex(CatalogIndex index)
+    {
+        var requiredBy = new Dictionary<(string Kind, string Id), List<string>>();
+        foreach (var item in index.Items)
+        {
+            foreach (var dependency in item.Requires)
+            {
+                var key = (ResolverDefaults.SkillKind, dependency);
+                if (!requiredBy.TryGetValue(key, out var who))
+                {
+                    who = [];
+                    requiredBy[key] = who;
+                }
+
+                who.Add(item.Id);
+            }
+        }
+
+        return requiredBy;
+    }
+
+    /// <summary>One browse row, counting the item into <paramref name="summary"/> as a side effect.</summary>
+    private BrowseItem BrowseRow(
+        CatalogItem item,
+        string sourceRoot,
+        HashSet<(string Kind, string Id)> selectedKeys,
+        IReadOnlyDictionary<(string Kind, string Id), LockEntry> locked,
+        HashSet<string> frozen,
+        Dictionary<(string Kind, string Id), List<string>> requiredBy,
+        MutableSummary summary)
+    {
+        var key = (item.Kind, item.Id);
+        var sameDirectory = WorkspacePaths.SamePath(sourceRoot, paths.Root);
+        var target = paths.TargetPath(item.Kind, item.Name);
+        var entry = locked.GetValueOrDefault(key);
+        var isSelected = selectedKeys.Contains(key);
+        var isRecorded = entry is not null;
+
+        // A lock entry is physical installed state even when the manifest no longer selects
+        // it (for example after a selection was cleared or an item was deselected): show it
+        // as installed instead of pretending it is an untouched catalog row.
+        var state = isSelected || isRecorded
+            ? StatusEvaluator.Evaluate(item.Kind, item, target, entry, sameDirectory)
+            : ItemStatus.Available;
+        if (isSelected && frozen.Contains(item.Id) && state is
+            ItemStatus.UpstreamChanged or ItemStatus.LocalModified or ItemStatus.Both)
+        {
+            state = ItemStatus.Locked;
+        }
+
+        var exists = PathOps.ExistsOrLink(target);
+        var localModified = entry is not null
+            && exists
+            && !string.Equals(ContentHash.InstalledHash(item, target), entry.Sha256, StringComparison.Ordinal);
+        var moved = entry is not null && StatusEvaluator.UpstreamChanged(item, entry);
+
+        if (state is ItemStatus.Ok or ItemStatus.Locked)
+        {
+            summary.Installed++;
+        }
+        else if (state != ItemStatus.Available)
+        {
+            summary.Drift++;
+        }
+
+        if (state == ItemStatus.UpstreamChanged)
+        {
+            summary.Updates++;
+        }
+
+        if (state == ItemStatus.Both)
+        {
+            summary.Conflicts++;
+        }
+
+        return new BrowseItem(
+            item.Id,
+            ItemId.Display(item.Id),
+            item.Kind,
+            item.Name,
+            item.Path,
+            item.Description,
+            item.Category,
+            item.Tags,
+            item.Source,
+            item.Ref,
+            item.License,
+            item.Upstream,
+            item.Sha256,
+            item.Files,
+            item.Requires,
+            requiredBy.GetValueOrDefault(key)?.OrderBy(id => id, StringComparer.Ordinal).ToList() ?? [],
+            isSelected,
+            state,
+            exists && (isSelected || isRecorded),
+            frozen.Contains(item.Id),
+            localModified,
+            moved);
     }
 
     public PresetsPayload PresetPayload()
@@ -341,7 +363,7 @@ public sealed class WorkspaceQueries
         var manifest = ManifestOrStarter();
         var index = BuildIndex(manifest);
         var engine = Engine(index);
-        var cards = PresetCards(index.ByKey(), engine);
+        var cards = PresetCards(engine);
         var active = SelectionEngine.PresetNames(manifest);
         return new PresetsPayload(active.Count > 0 ? active[0] : null, active, cards);
     }
@@ -362,12 +384,9 @@ public sealed class WorkspaceQueries
         var selectedKeys = selected.ToHashSet();
         // A lock entry is installed even when the manifest no longer selects it; include it in
         // the update check instead of showing an Updates badge with an empty overview.
-        foreach (var key in lockByKey.Keys)
+        foreach (var key in lockByKey.Keys.Where(selectedKeys.Add))
         {
-            if (selectedKeys.Add(key))
-            {
-                selected.Add(key);
-            }
+            selected.Add(key);
         }
 
         var selectedSources = selected
@@ -392,7 +411,6 @@ public sealed class WorkspaceQueries
                 && SourceCatalog.IsRemote(sourceEntry.Entry);
         });
 
-        var locked = lockByKey;
         var mode = MaterializeMode(manifest);
         var wanted = ids is null
             ? new HashSet<string>(StringComparer.Ordinal)
@@ -402,27 +420,10 @@ public sealed class WorkspaceQueries
         var rows = new List<UpdateRow>();
         foreach (var (kind, itemId) in selected)
         {
-            if (wanted.Count > 0 && !wanted.Contains(itemId) && !wanted.Contains(ItemId.Display(itemId)))
+            if (IsWanted(wanted, itemId))
             {
-                continue;
+                rows.Add(UpdateRowFor(kind, itemId, indexByKey, lockByKey, declaredSources, frozen));
             }
-
-            indexByKey.TryGetValue((kind, itemId), out var item);
-            var entry = locked.GetValueOrDefault((kind, itemId));
-            var sourceName = item?.Source ?? ResolverDefaults.TemplateSource;
-            var root = declaredSources.TryGetValue(sourceName, out var sourceEntry)
-                ? sources.SourceRoot(sourceName, sourceEntry.Entry)
-                : paths.Root;
-            var target = paths.TargetPath(kind, item?.Name ?? ItemId.Display(itemId));
-            var state = StatusEvaluator.Evaluate(kind, item, target, entry, WorkspacePaths.SamePath(root, paths.Root));
-            rows.Add(new UpdateRow(
-                itemId,
-                ItemId.Display(itemId),
-                kind,
-                state,
-                frozen.Contains(itemId),
-                item?.Path ?? entry?.Path ?? string.Empty,
-                sourceName));
         }
 
         var updatable = new[] { ItemStatus.UpstreamChanged, ItemStatus.NotInstalled, ItemStatus.Missing };
@@ -454,6 +455,36 @@ public sealed class WorkspaceQueries
             $"update plan: {ready.Count} ready, {blocked.Count} blocked, {held.Count} locked in "
             + $"{Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms");
         return plan;
+    }
+
+    private static bool IsWanted(HashSet<string> wanted, string itemId) =>
+        wanted.Count == 0 || wanted.Contains(itemId) || wanted.Contains(ItemId.Display(itemId));
+
+    /// <summary>One update row: where the item is, how it compares to upstream, and whether it is frozen.</summary>
+    private UpdateRow UpdateRowFor(
+        string kind,
+        string itemId,
+        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> indexByKey,
+        IReadOnlyDictionary<(string Kind, string Id), LockEntry> locked,
+        Dictionary<string, (string Name, JsonObject Entry)> declaredSources,
+        HashSet<string> frozen)
+    {
+        indexByKey.TryGetValue((kind, itemId), out var item);
+        var entry = locked.GetValueOrDefault((kind, itemId));
+        var sourceName = item?.Source ?? ResolverDefaults.TemplateSource;
+        var root = declaredSources.TryGetValue(sourceName, out var sourceEntry)
+            ? sources.SourceRoot(sourceName, sourceEntry.Entry)
+            : paths.Root;
+        var target = paths.TargetPath(kind, item?.Name ?? ItemId.Display(itemId));
+        var state = StatusEvaluator.Evaluate(kind, item, target, entry, WorkspacePaths.SamePath(root, paths.Root));
+        return new UpdateRow(
+            itemId,
+            ItemId.Display(itemId),
+            kind,
+            state,
+            frozen.Contains(itemId),
+            item?.Path ?? entry?.Path ?? string.Empty,
+            sourceName);
     }
 
     public UpdatePayload Updates(IReadOnlyCollection<string>? ids = null, bool force = false)
@@ -553,7 +584,7 @@ public sealed class WorkspaceQueries
                 item.Sha256,
                 item.Ref,
                 isInstalled,
-                isInstalled ? (selected.Contains(key) ? "selected" : "locked") : string.Empty));
+                InstalledState(selected, key, isInstalled)));
         }
 
         var catalogKeys = index.Items.Select(item => (item.Kind, item.Id)).ToHashSet();
@@ -570,12 +601,12 @@ public sealed class WorkspaceQueries
                     entry.Sha256 ?? string.Empty,
                     entry.Ref ?? string.Empty,
                     true,
-                    "locked"));
+                    LockedState));
             }
         }
 
         var available = rows
-            .Where(row => row.State != "locked" || catalogKeys.Contains((row.Kind, row.Id)))
+            .Where(row => row.State != LockedState || catalogKeys.Contains((row.Kind, row.Id)))
             .Select(row => row.Id)
             .ToList();
         var installed = rows.Where(row => row.Installed).Select(row => row.Id).ToList();
@@ -583,6 +614,20 @@ public sealed class WorkspaceQueries
             ? rows.Where(row => !row.Installed || catalogKeys.Contains((row.Kind, row.Id))).ToList()
             : rows;
         return new ListPayload(filtered, available, installed);
+    }
+
+    /// <summary>How a row is installed: selected, present only because it is locked, or not at all.</summary>
+    private static string InstalledState(
+        IReadOnlyCollection<(string Kind, string Id)> selected,
+        (string Kind, string Id) key,
+        bool isInstalled)
+    {
+        if (!isInstalled)
+        {
+            return string.Empty;
+        }
+
+        return selected.Contains(key) ? "selected" : LockedState;
     }
 
     public ReleasePayload Release()
@@ -629,9 +674,7 @@ public sealed class WorkspaceQueries
             error);
     }
 
-    private List<PresetCard> PresetCards(
-        IReadOnlyDictionary<(string Kind, string Id), CatalogItem> indexByKey,
-        SelectionEngine engine)
+    private List<PresetCard> PresetCards(SelectionEngine engine)
     {
         var cards = new List<PresetCard>();
         foreach (var name in Presets.Order)
@@ -677,37 +720,23 @@ public sealed class WorkspaceQueries
 
     private CategoryVocabulary LoadVocabularyFile(string fileName)
     {
-        foreach (var candidate in VocabularyCandidates(fileName))
-        {
-            if (File.Exists(candidate))
-            {
-                return CategoryVocabulary.Load(candidate);
-            }
-        }
-
-        return CategoryVocabulary.Empty;
+        var found = VocabularyCandidates(fileName).FirstOrDefault(File.Exists);
+        return found is null ? CategoryVocabulary.Empty : CategoryVocabulary.Load(found);
     }
 
     private PresetCatalog LoadPresetFile()
     {
-        foreach (var candidate in VocabularyCandidates("presets.json"))
-        {
-            if (File.Exists(candidate))
-            {
-                return PresetCatalog.Load(candidate);
-            }
-        }
-
-        return PresetCatalog.Empty;
+        var found = VocabularyCandidates("presets.json").FirstOrDefault(File.Exists);
+        return found is null ? PresetCatalog.Empty : PresetCatalog.Load(found);
     }
 
     private IEnumerable<string> VocabularyCandidates(string fileName)
     {
-        yield return Path.Combine(paths.AiDirectory, "catalog", fileName);
-        yield return Path.Combine(paths.Root, "catalog", fileName);
+        yield return Path.Combine(paths.AiDirectory, CatalogDirectory, fileName);
+        yield return Path.Combine(paths.Root, CatalogDirectory, fileName);
         if (!string.IsNullOrEmpty(BundledToolingRoot))
         {
-            yield return Path.Combine(BundledToolingRoot, "catalog", fileName);
+            yield return Path.Combine(BundledToolingRoot, CatalogDirectory, fileName);
         }
     }
 

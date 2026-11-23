@@ -11,18 +11,17 @@ namespace AiWorkspaceManager.Core.Workspace;
 /// </summary>
 public sealed class MaintenanceService
 {
+    private const string SourcesKey = "sources";
+
     private readonly WorkspaceQueries queries;
     private readonly WorkspaceSetupService setup;
-    private readonly WorkspaceOperations operations;
 
     public MaintenanceService(
         WorkspaceQueries queries,
-        WorkspaceSetupService setup,
-        WorkspaceOperations operations)
+        WorkspaceSetupService setup)
     {
         this.queries = queries;
         this.setup = setup;
-        this.operations = operations;
     }
 
     /// <summary>Set a repository up from the template in one call (activation's setup step).</summary>
@@ -251,41 +250,11 @@ public sealed class MaintenanceService
     {
         var manifest = queries.LoadManifest() ?? queries.StarterManifest();
         var index = queries.BuildIndex(manifest);
-        var output = string.IsNullOrEmpty(outPath) ? queries.Paths.IndexPath : outPath;
-        if (!Path.IsPathRooted(output))
-        {
-            output = Path.Combine(queries.Paths.Root, output);
-        }
+        var output = ResolvePath(outPath, queries.Paths.IndexPath);
+        var stale = IsIndexStale(output, index);
 
-        var existing = JsonFiles.ReadObject(output);
-        var stale = existing is null || JsonFiles.Canonical(existing) != JsonFiles.Canonical(IndexNode(index));
-        string? compactPath = null;
-        var compactStale = false;
-        string? compactText = null;
-        if (compact)
-        {
-            compactPath = string.IsNullOrEmpty(compactOut)
-                ? Path.Combine(Path.GetDirectoryName(output)!, "INDEX.md")
-                : compactOut;
-            if (!Path.IsPathRooted(compactPath))
-            {
-                compactPath = Path.Combine(queries.Paths.Root, compactPath);
-            }
-
-            int? installed = null;
-            try
-            {
-                installed = queries.Engine(index).EffectiveSelection(manifest, strict: false).Count;
-            }
-            catch (ResolverException)
-            {
-                installed = null;
-            }
-
-            compactText = RenderCompact(index, installed);
-            compactStale = !File.Exists(compactPath)
-                || File.ReadAllText(compactPath) != compactText;
-        }
+        var compactPlan = compact ? PlanCompact(manifest, index, output, compactOut) : null;
+        var compactStale = compactPlan?.Stale ?? false;
 
         if (verify)
         {
@@ -295,7 +264,7 @@ public sealed class MaintenanceService
                 : $"STALE: index is stale: {output} (run 'catalog.py index')\n";
             return new OperationOutcome(
                 new CliResult(code, lines, string.Empty),
-                new IndexPayload(stale || compactStale, false, output, index.Items.Count, compactPath));
+                new IndexPayload(stale || compactStale, false, output, index.Items.Count, compactPlan?.Path));
         }
 
         if (stale)
@@ -303,20 +272,54 @@ public sealed class MaintenanceService
             JsonFiles.Write(output, IndexNode(index));
         }
 
-        if (compactPath is not null && compactStale && compactText is not null)
+        if (compactPlan is { Stale: true } plan)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(compactPath)!);
-            File.WriteAllText(compactPath, compactText);
+            Directory.CreateDirectory(Path.GetDirectoryName(plan.Path)!);
+            File.WriteAllText(plan.Path, plan.Text);
         }
 
-        var payload = new IndexPayload(false, stale, output, index.Items.Count, compactPath);
+        var payload = new IndexPayload(false, stale, output, index.Items.Count, compactPlan?.Path);
         var message = $"{(stale ? "wrote" : "unchanged")}: {output} ({index.Items.Count} item(s))\n";
-        if (compactPath is not null)
+        if (compactPlan is not null)
         {
-            message += $"compact: {compactPath}\n";
+            message += $"compact: {compactPlan.Path}\n";
         }
 
         return new OperationOutcome(new CliResult(0, message, string.Empty), payload);
+    }
+
+    private string ResolvePath(string? requested, string fallback) =>
+        Path.IsPathRooted(requested ?? fallback)
+            ? requested ?? fallback
+            : Path.Combine(queries.Paths.Root, requested ?? fallback);
+
+    private static bool IsIndexStale(string output, CatalogIndex index)
+    {
+        var existing = JsonFiles.ReadObject(output);
+        return existing is null || JsonFiles.Canonical(existing) != JsonFiles.Canonical(IndexNode(index));
+    }
+
+    /// <summary>Where the compact view goes, what it should say, and whether it is out of date.</summary>
+    private CompactPlan PlanCompact(
+        ManifestDocument manifest,
+        CatalogIndex index,
+        string output,
+        string? compactOut)
+    {
+        var path = ResolvePath(compactOut, Path.Combine(Path.GetDirectoryName(output)!, "INDEX.md"));
+        int? installed = null;
+        try
+        {
+            installed = queries.Engine(index).EffectiveSelection(manifest, strict: false).Count;
+        }
+        catch (ResolverException)
+        {
+            installed = null;
+        }
+
+        var text = RenderCompact(index, installed);
+        var stale = !File.Exists(path) || File.ReadAllText(path) != text;
+        return new CompactPlan(path, text, stale);
     }
 
     /// <summary>Write attribution for the third-party content this project installs.</summary>
@@ -371,108 +374,7 @@ public sealed class MaintenanceService
             new NoticePayload(false, output, rows.Count));
     }
 
-    /// <summary>The CLI's bootstrap command; also used by a manual setup.</summary>
-    public OperationOutcome Init(
-        string? preset = null,
-        bool all = false,
-        IReadOnlyList<string>? ids = null,
-        IReadOnlyList<string>? agents = null,
-        string? repo = null,
-        string? reference = null,
-        string? path = null,
-        string? materialize = null,
-        bool force = false)
-    {
-        var manifestPath = queries.Paths.ManifestPath;
-        var fresh = !File.Exists(manifestPath);
-        if (!fresh && !force)
-        {
-            throw new ResolverException($"{Path.GetFileName(manifestPath)} already exists — use --force to replace it");
-        }
-
-        var presetName = all ? "Everything" : preset;
-        if (string.IsNullOrEmpty(presetName) && (ids is null || ids.Count == 0) && (agents is null || agents.Count == 0))
-        {
-            throw new ResolverException("init needs --preset <name>, --all, or explicit ids");
-        }
-
-        var existing = queries.LoadManifest();
-        var data = queries.DefaultManifest();
-        if (!queries.HasLocalCatalog())
-        {
-            var sourceEntry = data.GetObject("sources")!["template"]!.AsObject();
-            sourceEntry["repo"] = repo ?? ResolverDefaults.TemplateRepo;
-            sourceEntry["ref"] = reference ?? "main";
-            sourceEntry["resolve"] = "remote";
-        }
-        else
-        {
-            var sourceEntry = data.GetObject("sources")!["template"]!.AsObject();
-            sourceEntry["repo"] = repo ?? ResolverDefaults.TemplateRepo;
-            sourceEntry["ref"] = reference ?? ResolverDefaults.LocalRef;
-        }
-
-        if (!queries.Offline)
-        {
-            var sources = data.GetObject("sources")!;
-            foreach (var name in BuiltinSources.Names)
-            {
-                if (!sources.ContainsKey(name))
-                {
-                    sources[name] = BuiltinSources.Create(name);
-                }
-            }
-        }
-
-        if (existing?.GetObject("sources") is { } existingSources)
-        {
-            var sources = data.GetObject("sources")!;
-            foreach (var (name, node) in existingSources.ToList())
-            {
-                sources[name] = node?.DeepClone();
-            }
-        }
-
-        var templateEntry = data.GetObject("sources")!["template"]!.AsObject();
-        if (repo is not null)
-        {
-            templateEntry["repo"] = repo;
-        }
-
-        if (reference is not null)
-        {
-            templateEntry["ref"] = reference;
-        }
-
-        if (path is not null)
-        {
-            templateEntry["path"] = path;
-        }
-
-        data.Set("preset", presetName);
-        data.Set("skills", new JsonArray((ids ?? []).Select(id => (JsonNode)id).ToArray()));
-        data.Set("agents", new JsonArray((agents ?? []).Select(id => (JsonNode)id).ToArray()));
-        var defaultMode = SourceCatalog.IsRemote(templateEntry) ? "copy" : "link";
-        data.Set("materialize", materialize ?? defaultMode);
-
-        var manifest = data.Bind(manifestPath);
-        manifest.Save();
-
-        var agentLines = new List<string>();
-        if (fresh)
-        {
-            var sourceRoot = queries.Sources.TemplateRoot(manifest);
-            _ = setup.InstallScaffold(sourceRoot);
-            // The sync below sees these files as already merged, so their outcome is reported here.
-            agentLines.AddRange(AgentConfigPayload.From(setup.InstallAgentConfig(manifest.Root)).Lines());
-        }
-
-        var sync = operations.Sync();
-        var result = sync.Result with { Stdout = JoinLines(agentLines) + sync.Result.Stdout };
-        return new OperationOutcome(
-            result,
-            new Dictionary<string, object?>(StringComparer.Ordinal) { ["init"] = true });
-    }
+    private sealed record CompactPlan(string Path, string Text, bool Stale);
 
     private List<string> MergeBuiltinSources(ManifestDocument manifest)
     {
@@ -482,19 +384,16 @@ public sealed class MaintenanceService
             return added;
         }
 
-        var sources = manifest.GetObject("sources") ?? new JsonObject();
-        if (manifest.GetObject("sources") is null)
+        var sources = manifest.GetObject(SourcesKey) ?? new JsonObject();
+        if (manifest.GetObject(SourcesKey) is null)
         {
-            manifest.Set("sources", sources);
+            manifest.Set(SourcesKey, sources);
         }
 
-        foreach (var name in BuiltinSources.Names)
+        foreach (var name in BuiltinSources.Names.Where(name => !sources.ContainsKey(name)))
         {
-            if (!sources.ContainsKey(name))
-            {
-                sources[name] = BuiltinSources.Create(name);
-                added.Add(name);
-            }
+            sources[name] = BuiltinSources.Create(name);
+            added.Add(name);
         }
 
         return added;

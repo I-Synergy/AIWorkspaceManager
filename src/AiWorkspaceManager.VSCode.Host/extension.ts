@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { CatalogItem, CategoryRow } from "../AiWorkspaceManager.VSCode.Common/types";
+import type { CatalogItem, CategoryRow, RequiredItem } from "../AiWorkspaceManager.VSCode.Common/types";
 import { Configure, Dispose, corePath, isAvailable } from "./core-process";
 import { createHostAPI } from "./host-api";
 import { AiManagerPanel, PANEL_ID } from "./panel";
@@ -145,15 +145,37 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     const item = node.item;
-    const result = action === "install"
-      ? await api.install({ Ids: [item.id] })
-      : await api.remove({ Ids: [item.id], Prune: false });
-    if (!result.ok || result.value.code !== 0) {
-      const detail = result.ok ? result.value.stderr.trim() : result.error;
-      const failure = detail || `${action} failed`;
-      void vscode.window.showErrorMessage(`AI Workspace Manager: ${failure}`);
+
+    if (action === "install") {
+      const installed = await api.install({ Ids: [item.id] });
+      if (!installed.ok || installed.value.result.code !== 0) {
+        const detail = installed.ok ? installed.value.result.stderr.trim() : installed.error;
+        await vscode.window.showErrorMessage(`AI Workspace Manager: ${detail || "install failed"}`);
+      } else {
+        reportDependencies(installed.value.dependencies);
+      }
+    } else {
+      const removed = await api.remove({ Ids: [item.id], Prune: false });
+      if (!removed.ok || removed.value.code !== 0) {
+        const detail = removed.ok ? removed.value.stderr.trim() : removed.error;
+        await vscode.window.showErrorMessage(`AI Workspace Manager: ${detail || "remove failed"}`);
+      }
     }
+
     await refreshAll();
+  };
+
+  /**
+   * `install` selects whatever the item requires, transitively. Say so, naming the item that
+   * pulled each one in, so the extra folders never appear without an explanation.
+   */
+  const reportDependencies = (dependencies: RequiredItem[]): void => {
+    if (dependencies.length === 0) {
+      return;
+    }
+    const named = dependencies.map((entry) => `${entry.id} (required by ${entry.requiredBy})`);
+    void vscode.window.showInformationMessage(
+      `AI Workspace Manager: installed ${dependencies.length} required item(s): ${named.join(", ")}`);
   };
 
   context.subscriptions.push(

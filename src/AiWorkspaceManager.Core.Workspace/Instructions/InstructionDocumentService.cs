@@ -13,6 +13,12 @@ namespace AiWorkspaceManager.Core.Workspace;
 /// </summary>
 public sealed partial class InstructionDocumentService
 {
+    /// <summary>Upper bound for every regex here; the inputs are small, so this only guards against runaways.</summary>
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>The same bound for <see cref="GeneratedRegexAttribute"/>, which takes milliseconds.</summary>
+    private const int RegexTimeoutMs = 1000;
+
     private const string AgentsAnchor = ".ai/session-context.md";
     private const string CopilotFile = ".github/copilot-instructions.md";
     private const string MarkerPrefix = "<!-- ai-workspace-manager:";
@@ -57,14 +63,9 @@ public sealed partial class InstructionDocumentService
         }
 
         var manifest = ManifestDocument.Temporary(manifestRoot);
-        var entry = SourceCatalog.EntryNamed(manifest, ResolverDefaults.TemplateSource);
-        if (!SourceCatalog.IsRemote(entry))
+        if (TemplateIsThisWorkspace(manifest))
         {
-            var sourceRoot = queries.Sources.SourceRoot(ResolverDefaults.TemplateSource, entry);
-            if (WorkspacePaths.SamePath(sourceRoot, queries.Paths.Root))
-            {
-                return results;
-            }
+            return results;
         }
 
         var catalog = ReadInstalled();
@@ -75,86 +76,127 @@ public sealed partial class InstructionDocumentService
 
         var agentsPath = Path.Combine(queries.Paths.Root, "AGENTS.md");
         var agentsRaw = File.Exists(agentsPath) ? File.ReadAllText(agentsPath) : string.Empty;
-        var agentsText = NormalizeMarkers(agentsRaw);
-        if (agentsText.Length > 0)
-        {
-            var original = agentsRaw;
-            if (agentsText.Contains(AgentsAnchor, StringComparison.Ordinal))
-            {
-                agentsText = FilterItemRefs(agentsText, names);
-                if (InstalledBlock().IsMatch(agentsText))
-                {
-                    agentsText = InstalledBlock().Replace(agentsText, section).TrimEnd() + "\n";
-                }
-                else
-                {
-                    agentsText = agentsText.TrimEnd() + "\n\n" + section + "\n";
-                }
-            }
-
-            if (agentsText != original)
-            {
-                File.WriteAllText(agentsPath, agentsText);
-                results["AGENTS.md"] = "updated";
-            }
-            else
-            {
-                results["AGENTS.md"] = "unchanged";
-            }
-        }
+        var agentsText = UpdateAgentsDocument(agentsPath, agentsRaw, names, section, results);
 
         var copilotPath = Path.Combine(queries.Paths.Root, CopilotFile);
-        var clients = SelectionEngine.Clients(manifest);
-        if (!clients.Contains("copilot"))
+        if (!SelectionEngine.Clients(manifest).Contains("copilot"))
         {
-            if (File.Exists(copilotPath))
-            {
-                var existing = File.ReadAllText(copilotPath);
-                if (existing.Contains(CopilotGenerated, StringComparison.Ordinal)
-                    || existing.Contains(LegacyMarkerPrefix, StringComparison.Ordinal))
-                {
-                    File.Delete(copilotPath);
-                    var parent = Path.GetDirectoryName(copilotPath);
-                    if (!string.IsNullOrEmpty(parent)
-                        && Directory.Exists(parent)
-                        && !Directory.EnumerateFileSystemEntries(parent).Any())
-                    {
-                        Directory.Delete(parent);
-                    }
-
-                    results[CopilotFile] = "removed";
-                }
-                else
-                {
-                    results[CopilotFile] = "kept";
-                }
-            }
-
+            RemoveCopilotDocument(copilotPath, results);
             return results;
         }
 
         if (agentsText.Length > 0)
         {
-            var existing = File.Exists(copilotPath) ? File.ReadAllText(copilotPath) : null;
-            var document = CopilotDocument(agentsText, existing, names, ReadCopilotRuntime(manifest));
-            if (document is not null && document != existing)
-            {
-                var parent = Path.GetDirectoryName(copilotPath);
-                if (!string.IsNullOrEmpty(parent))
-                {
-                    Directory.CreateDirectory(parent);
-                }
-
-                File.WriteAllText(copilotPath, document);
-                results[CopilotFile] = "updated";
-            }
-            else
-            {
-                results[CopilotFile] = document is not null ? "unchanged" : "kept";
-            }
+            WriteCopilotDocument(this, copilotPath, agentsText, names, manifest, results);
         }
 
         return results;
+    }
+
+    /// <summary>A template source that resolves to this workspace is the project itself: nothing to merge.</summary>
+    private bool TemplateIsThisWorkspace(ManifestDocument manifest)
+    {
+        var entry = SourceCatalog.EntryNamed(manifest, ResolverDefaults.TemplateSource);
+        if (SourceCatalog.IsRemote(entry))
+        {
+            return false;
+        }
+
+        var sourceRoot = queries.Sources.SourceRoot(ResolverDefaults.TemplateSource, entry);
+        return WorkspacePaths.SamePath(sourceRoot, queries.Paths.Root);
+    }
+
+    /// <summary>Rewrites the managed block and the item references in AGENTS.md; returns the new text.</summary>
+    private static string UpdateAgentsDocument(
+        string agentsPath,
+        string agentsRaw,
+        InstalledNames names,
+        string section,
+        Dictionary<string, string> results)
+    {
+        var agentsText = NormalizeMarkers(agentsRaw);
+        if (agentsText.Length == 0)
+        {
+            return agentsText;
+        }
+
+        if (agentsText.Contains(AgentsAnchor, StringComparison.Ordinal))
+        {
+            agentsText = FilterItemRefs(agentsText, names);
+            agentsText = InstalledBlock().IsMatch(agentsText)
+                ? InstalledBlock().Replace(agentsText, section).TrimEnd() + "\n"
+                : agentsText.TrimEnd() + "\n\n" + section + "\n";
+        }
+
+        if (agentsText == agentsRaw)
+        {
+            results["AGENTS.md"] = "unchanged";
+            return agentsText;
+        }
+
+        File.WriteAllText(agentsPath, agentsText);
+        results["AGENTS.md"] = "updated";
+        return agentsText;
+    }
+
+    /// <summary>Deletes the generated Copilot instructions, and their folder when nothing else is left.</summary>
+    private static void RemoveCopilotDocument(string copilotPath, Dictionary<string, string> results)
+    {
+        if (!File.Exists(copilotPath))
+        {
+            return;
+        }
+
+        var existing = File.ReadAllText(copilotPath);
+        if (!existing.Contains(CopilotGenerated, StringComparison.Ordinal)
+            && !existing.Contains(LegacyMarkerPrefix, StringComparison.Ordinal))
+        {
+            results[CopilotFile] = "kept";
+            return;
+        }
+
+        File.Delete(copilotPath);
+        var parent = Path.GetDirectoryName(copilotPath);
+        if (!string.IsNullOrEmpty(parent)
+            && Directory.Exists(parent)
+            && !Directory.EnumerateFileSystemEntries(parent).Any())
+        {
+            Directory.Delete(parent);
+        }
+
+        results[CopilotFile] = "removed";
+    }
+
+    private static void WriteCopilotDocument(
+        InstructionDocumentService service,
+        string copilotPath,
+        string agentsText,
+        InstalledNames names,
+        ManifestDocument manifest,
+        Dictionary<string, string> results)
+    {
+        var existing = File.Exists(copilotPath) ? File.ReadAllText(copilotPath) : null;
+        var document = CopilotDocument(agentsText, existing, names, service.ReadCopilotRuntime(manifest));
+        if (document is null)
+        {
+            results[CopilotFile] = "kept";
+            return;
+        }
+
+        if (document == existing)
+        {
+            results[CopilotFile] = "unchanged";
+            return;
+        }
+
+        var parent = Path.GetDirectoryName(copilotPath);
+        if (!string.IsNullOrEmpty(parent))
+        {
+            Directory.CreateDirectory(parent);
+        }
+
+        File.WriteAllText(copilotPath, document);
+        results[CopilotFile] = "updated";
     }
 
     public IReadOnlyList<(string Name, string Description)> InstalledSkills()
@@ -237,66 +279,73 @@ public sealed partial class InstructionDocumentService
         var kept = new List<string>();
         foreach (var line in text.Split('\n').Select(line => line.TrimEnd('\r')))
         {
-            var missing = false;
-            var updated = ItemRef().Replace(line, match =>
-            {
-                var skill = match.Groups["skill"].Value;
-                if (skill.Length > 0)
-                {
-                    if (names.Skills.Contains(skill))
-                    {
-                        return match.Value;
-                    }
-                }
-                else if (names.Agents.Contains(match.Groups["agent"].Value))
-                {
-                    return match.Value;
-                }
-
-                missing = true;
-                return string.Empty;
-            });
-
+            var remaining = FilterLine(line, names, out var missing);
             if (!missing)
             {
                 kept.Add(line);
                 continue;
             }
 
-            updated = TidyReferenceLine(updated);
-            if (updated.TrimStart().StartsWith('|')
-                && !Regex.IsMatch(updated, "`\\.ai/", RegexOptions.CultureInvariant))
+            if (ShouldDropLine(remaining))
             {
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(updated))
-            {
-                continue;
-            }
-
-            kept.Add(updated);
+            kept.Add(remaining);
         }
 
         var result = string.Join("\n", kept);
         return text.EndsWith('\n') ? result + "\n" : result;
     }
 
+    /// <summary>Drops references to items that are no longer installed, then tidies what is left.</summary>
+    private static string FilterLine(string line, InstalledNames names, out bool missing)
+    {
+        var found = false;
+        var updated = ItemRef().Replace(line, match =>
+        {
+            if (IsInstalledReference(match, names))
+            {
+                return match.Value;
+            }
+
+            found = true;
+            return string.Empty;
+        });
+
+        missing = found;
+        return found ? TidyReferenceLine(updated) : updated;
+    }
+
+    private static bool IsInstalledReference(Match match, InstalledNames names)
+    {
+        var skill = match.Groups["skill"].Value;
+        return skill.Length > 0
+            ? names.Skills.Contains(skill)
+            : names.Agents.Contains(match.Groups["agent"].Value);
+    }
+
+    /// <summary>A table row whose only content was the removed reference goes away with it.</summary>
+    private static bool ShouldDropLine(string line) =>
+        string.IsNullOrWhiteSpace(line)
+        || (line.TrimStart().StartsWith('|')
+            && !Regex.IsMatch(line, "`\\.ai/", RegexOptions.CultureInvariant, RegexTimeout));
+
     private static string TidyReferenceLine(string line)
     {
-        while (Regex.IsMatch(line, @",\s*,", RegexOptions.CultureInvariant))
+        while (Regex.IsMatch(line, @",\s*,", RegexOptions.CultureInvariant, RegexTimeout))
         {
-            line = Regex.Replace(line, @",\s*,", ", ", RegexOptions.CultureInvariant);
+            line = Regex.Replace(line, @",\s*,", ", ", RegexOptions.CultureInvariant, RegexTimeout);
         }
 
-        line = Regex.Replace(line, @"\|\s*,", "|", RegexOptions.CultureInvariant);
-        line = Regex.Replace(line, @",\s*\|", " |", RegexOptions.CultureInvariant);
-        line = Regex.Replace(line, @";\s*invocable as\s*$", string.Empty, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        line = Regex.Replace(line, @"\s+as\s*$", string.Empty, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        line = Regex.Replace(line, @"\s+and\s*\.?\s*$", string.Empty, RegexOptions.CultureInvariant);
-        line = Regex.Replace(line, @"\s+or\s*\.?\s*$", string.Empty, RegexOptions.CultureInvariant);
-        line = Regex.Replace(line, @";\s*$", string.Empty, RegexOptions.CultureInvariant);
-        line = Regex.Replace(line, @"[ \t]{2,}", " ", RegexOptions.CultureInvariant);
+        line = Regex.Replace(line, @"\|\s*,", "|", RegexOptions.CultureInvariant, RegexTimeout);
+        line = Regex.Replace(line, @",\s*\|", " |", RegexOptions.CultureInvariant, RegexTimeout);
+        line = Regex.Replace(line, @";\s*invocable as\s*$", string.Empty, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RegexTimeout);
+        line = Regex.Replace(line, @"\s+as\s*$", string.Empty, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RegexTimeout);
+        line = Regex.Replace(line, @"\s+and\s*\.?\s*$", string.Empty, RegexOptions.CultureInvariant, RegexTimeout);
+        line = Regex.Replace(line, @"\s+or\s*\.?\s*$", string.Empty, RegexOptions.CultureInvariant, RegexTimeout);
+        line = Regex.Replace(line, @";\s*$", string.Empty, RegexOptions.CultureInvariant, RegexTimeout);
+        line = Regex.Replace(line, @"[ \t]{2,}", " ", RegexOptions.CultureInvariant, RegexTimeout);
         return line.TrimEnd();
     }
 
@@ -400,23 +449,23 @@ public sealed partial class InstructionDocumentService
 
     [GeneratedRegex(
         "\\.ai/(?:skills/(?<skill>[A-Za-z0-9._-]+)/SKILL\\.md|agents/(?<agent>[A-Za-z0-9._-]+)\\.md)",
-        RegexOptions.CultureInvariant)]
+        RegexOptions.CultureInvariant, RegexTimeoutMs)]
     private static partial Regex ItemRef();
 
     [GeneratedRegex(
         "## Installed skills and agents\\s*\\n.*?<!-- ai-workspace-manager:installed:end -->",
-        RegexOptions.Singleline | RegexOptions.CultureInvariant)]
+        RegexOptions.Singleline | RegexOptions.CultureInvariant, RegexTimeoutMs)]
     private static partial Regex InstalledBlock();
 
-    [GeneratedRegex("\\.claude/(?!settings\\.json|settings\\.local\\.json)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("\\.claude/(?!settings\\.json|settings\\.local\\.json)", RegexOptions.CultureInvariant, RegexTimeoutMs)]
     private static partial Regex ClaudePathPattern();
 
-    [GeneratedRegex("^## {TITLE}\\s*$.*?(?=^## |\\Z)", RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^## {TITLE}\\s*$.*?(?=^## |\\Z)", RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.CultureInvariant, RegexTimeoutMs)]
     private static partial Regex SectionTemplate();
 
     private static Regex SectionPattern(string title) =>
         new("^## " + Regex.Escape(title) + "\\s*$.*?(?=^## |\\Z)",
-            RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.CultureInvariant, RegexTimeout);
 
     private sealed record InstalledCatalog(
         IReadOnlyList<(string Name, string Description)> Skills,

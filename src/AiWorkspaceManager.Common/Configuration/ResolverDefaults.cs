@@ -11,44 +11,71 @@ public static class ResolverDefaults
     public const string LocalRef = "local";
     public const string License = "MIT";
 
+    /// <summary>Item kinds that declare dependencies, and the manifest list they live in.</summary>
+    public const string SkillKind = "skill";
+    public const string AgentKind = "agent";
+
+    /// <summary>Manifest key that removes items a preset or source would otherwise bring in.</summary>
+    public const string ExcludeKey = "exclude";
+
+    /// <summary>Planned sync steps, as written to <c>SyncAction.Action</c>.</summary>
+    public const string ActionCreate = "create";
+    public const string ActionUpdate = "update";
+    public const string ActionConflict = "conflict";
+    public const string ActionOk = "ok";
+    public const string ActionNoOp = "no-op";
+
+    /// <summary>Every item kind, so payloads and folder walks can name them without a literal.</summary>
+    public const string InstructionKind = "instruction";
+    public const string PromptKind = "prompt";
+    public const string PluginKind = "plugin";
+    public const string HookKind = "hook";
+
     /// <summary>Item kinds, in the order every payload and folder walk uses.</summary>
     public static readonly IReadOnlyList<string> Kinds =
-        ["skill", "agent", "instruction", "prompt", "plugin", "hook"];
+    [
+        SkillKind,
+        AgentKind,
+        InstructionKind,
+        PromptKind,
+        PluginKind,
+        HookKind,
+    ];
 
     /// <summary>Manifest array that holds each kind's selection.</summary>
     public static readonly IReadOnlyDictionary<string, string> ManifestKeys =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["skill"] = "skills",
-            ["agent"] = "agents",
-            ["instruction"] = "instructions",
-            ["prompt"] = "prompts",
-            ["plugin"] = "plugins",
-            ["hook"] = "hooks",
+            [SkillKind] = "skills",
+            [AgentKind] = "agents",
+            [InstructionKind] = "instructions",
+            [PromptKind] = "prompts",
+            [PluginKind] = "plugins",
+            [HookKind] = "hooks",
         };
 
     /// <summary>Folder name for each kind inside a source and under <c>.ai/</c>.</summary>
     public static readonly IReadOnlyDictionary<string, string> KindDirectories =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["skill"] = "skills",
-            ["agent"] = "agents",
-            ["instruction"] = "instructions",
-            ["prompt"] = "prompts",
-            ["plugin"] = "plugins",
-            ["hook"] = "hooks",
+            [SkillKind] = "skills",
+            [AgentKind] = "agents",
+            [InstructionKind] = "instructions",
+            [PromptKind] = "prompts",
+            [PluginKind] = "plugins",
+            [HookKind] = "hooks",
         };
 
     /// <summary>How an installed item is named on disk, per kind.</summary>
     public static readonly IReadOnlyDictionary<string, string> KindSuffixes =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["skill"] = "",
-            ["agent"] = ".md",
-            ["instruction"] = ".instructions.md",
-            ["prompt"] = ".prompt.md",
-            ["plugin"] = "",
-            ["hook"] = "",
+            [SkillKind] = "",
+            [AgentKind] = ".md",
+            [InstructionKind] = ".instructions.md",
+            [PromptKind] = ".prompt.md",
+            [PluginKind] = "",
+            [HookKind] = "",
         };
 
     /// <summary>AI clients whose platform folders are materialised.</summary>

@@ -9,7 +9,7 @@ public sealed class WorkspaceSession
         Queries = queries;
         Setup = new WorkspaceSetupService(queries);
         Operations = new WorkspaceOperations(queries, Setup);
-        Maintenance = new MaintenanceService(queries, Setup, Operations);
+        Maintenance = new MaintenanceService(queries, Setup);
         Project = new ProjectInfoService(paths);
     }
 
